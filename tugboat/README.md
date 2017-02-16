@@ -10,8 +10,6 @@ This version is highly modified from our internal version. Please see the follow
 
 ## Contents
 
-- [Download](#download) - get the .dmg
-
 - [Contact](#contact)
 
 - [System Requirements](#system-requirements)
@@ -42,11 +40,6 @@ This version is highly modified from our internal version. Please see the follow
 
 - [Update History](#update-history)
 
-
-
-## Download
-
-[Download the latest installer here!](../../releases/)
 
 
 

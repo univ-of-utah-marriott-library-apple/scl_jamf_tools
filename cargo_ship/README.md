@@ -10,7 +10,6 @@ This tool is identical to our inhouse version. However it can be customized to f
 
 ## Contents
 
-- [Download](#download) - get the .dmg
 - [Contact](#contact)
 - [System Requirements](#system-requirements)
 - [Install](#install)
@@ -21,13 +20,6 @@ This tool is identical to our inhouse version. However it can be customized to f
   - [Jamf User Privileges](#jamf-user-privileges)
 - [Notes](#notes)
 - [Update History](#update-history)
-
-
-
-## Download
-
-[Download the latest installer here!](../../releases/)
-
 
 
 ## Contact

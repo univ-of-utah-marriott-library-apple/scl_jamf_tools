@@ -4,8 +4,13 @@ This repository contains a collection of tools written to perform as enhancement
 
 Our goal is to make genericized versions of our internal tools available to other Jamf administrators. They are usable as is, but are intended as frameworks that others can use to build custom tools to more closely fit their environments.
 
+## Download
+
+[Download the latest installer here!](../../releases/)
+
 ## Contents
 
+- [Download](#download) - get the .dmg
 - [Contact](#contact)
 - [Cargo Ship](#cargoship)
 - [Tugboat](#tugboat)
