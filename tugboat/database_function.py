@@ -21,7 +21,7 @@ def dbase(self):
         try:
             db = MySQLdb.connect(host="your.mysql.server",  # your host, usually localhost
                                  user="your_user",          # your username
-                                 passwd="your_password",    # your password
+                                 passwd="your_password",    # your password, **not secure by any definition**
                                  db="your_db")              # name of the data base
         except:
             self.status_label.configure(style='Warning.TLabel')
