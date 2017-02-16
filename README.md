@@ -6,7 +6,7 @@ Our goal is to make genericized versions of our internal tools available to othe
 
 ## Download
 
-[Download the latest installer here!](../../releases/)
+[Download the latest package here!](../../releases/)
 
 ## Contents
 
