@@ -61,16 +61,14 @@ class Computer(object):
     """
     Store GUI and data structures describing jamf computer records
     """
-    def __init__(self, root, uuid, running_under_osx, jamf_hostname, jamf_username, jamf_password):
+    def __init__(self, root, jamf_hostname, jamf_username, jamf_password):
         """
         initialize variables and data structures
         """
         self.root = root
-        self.uuid = uuid
         self.jamf_hostname = jamf_hostname
         self.jamf_password = jamf_password
         self.jamf_username = jamf_username
-        self.running_under_osx = running_under_osx
         self.local_jamf_id = None
 
         self.hostname = ""
@@ -371,7 +369,7 @@ class Computer(object):
         self.id_entry = ttk.Entry(self.mainframe, width=6, textvariable=self.id_string)
         self.id_entry.grid(column=4, row=100, sticky=E)
 
-        if self.running_under_osx:
+        if platform.system() == 'Darwin':
             ttk.Label(self.mainframe, text="User Selection:").grid(column=1, row=150, sticky=E)
             ttk.Button(self.mainframe, text="Top User (Admin Req.)", command=self.usage).grid(column=2, row=150, sticky=W)
 
@@ -1443,18 +1441,8 @@ def main():
     if not jamf_username:
         sys.exit(0)
 
-    if platform.system() == 'Darwin':
-        running_under_osx = True
-        local_uuid_raw = subprocess.check_output(["system_profiler", "SPHardwareDataType"])
-        local_uuid = re.findall(r'Hardware UUID: (.*)', local_uuid_raw)[0]
-    else:
-        running_under_osx = False
-        local_uuid_raw = subprocess.check_output("wmic CsProduct Get UUID")
-        local_uuid_raw = local_uuid_raw.split("\r\r\n")[1]
-        local_uuid = local_uuid_raw.split(" ")[0]
-
     root = Tk()
-    my_app = Computer(root, local_uuid, running_under_osx, jamf_hostname, jamf_username, jamf_password)
+    my_app = Computer(root, jamf_hostname, jamf_username, jamf_password)
 
     root.mainloop()
 
