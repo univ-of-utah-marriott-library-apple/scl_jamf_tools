@@ -88,7 +88,7 @@ We use it to onboard (completing a machines inventory data) and offboard (removi
 Here's a quick demonstration of Tugboat in action:
 ![](imgs/tugboat_in_action.gif)
 
-*Note: Tugboat does **not** enroll clients. To modify a computer record for a specific machine, it must already be present in the Jamf databse.* 
+*Note: Tugboat does not* ***enroll*** *clients. To modify a computer record for a specific machine, it must already be present in the Jamf database.*
 
 ### Launching
 
@@ -102,7 +102,7 @@ Here is the UI for the version of Tugboat included in this repository:
 
 ![](imgs/tugboat_ui.png)
 
-The interface can be broken down into 4 areas: Navigation, General, User and Location, and Administration.
+The interface can be broken down into 4 areas: **Navigation**, **General**, **User and Location**, and **Administration**. These areas mirror the panes of an individual computer record in the Jamf database.
 
 ### Navigation
 
@@ -112,7 +112,7 @@ The first line in the UI contains tools used to select the computer record and h
 
 **This Device**: Open the record for the device the application is running on.
 
-**Search Jamf**: Enter the information you'd like to search for in the text field and press the Search Jamf button. The following image shows the search results window.
+**Search Jamf**: Enter the information you'd like to search for in the text field and press the **Search Jamf** button. The following image shows the search results window.
 
 ![](imgs/search_results.png)
 
