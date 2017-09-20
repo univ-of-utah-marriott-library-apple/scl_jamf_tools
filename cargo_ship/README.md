@@ -8,9 +8,15 @@ This tool is identical to our inhouse version. However it can be customized to f
 
 *Note: Offering a tool designed from the outset to be customized at the source level is a new venture for us. If you feel the documentation we've included is not sufficient to help you successfully navigate the source code, please consider raising an issue and we'll do our best to correct any short comings.*
 
-***2/16/17: Unfortunately it seems a lot of people are running into the LDAP bug I reference in the [blog post](https://apple.lib.utah.edu/?p=2057). If you are attempting to login as an LDAP user, Jamf does not map it's LDAP group permissions correctly. This is a known issue referred to as Product Issue PI-003395 inside Jamf. I urge you to contact your Jamf Technical Representative(s) and elevate this issue with them.***
+2/16/17: Unfortunately it seems a lot of people are running into the LDAP bug I reference in the [blog post](https://apple.lib.utah.edu/?p=2057). If you are attempting to login as an LDAP user, Jamf does not map it's LDAP group permissions correctly. This is a known issue referred to as Product Issue PI-003395 inside Jamf. I urge you to contact your Jamf Technical Representative(s) and elevate this issue with them.
 
-2/16/17: I've been getting some feedback from users in environments with 150+ policies that it can take on the order of 8 minutes from login to UI display due to the need to parse each policy individually in order to build the required data structures. I'm taking this feedback in consideration and am looking at ways to possibly postpone this step until requested by the user.
+I've been getting some feedback from users in environments with 150+ policies that it can take on the order of 8 minutes from login to UI display due to the need to parse each policy individually in order to build the required data structures. I'm taking this feedback in consideration and am looking at ways to possibly postpone this step until requested by the user.
+
+**4/11/17: Released version 1.5.2 of Cargo Ship. Lots of tweaks, added logging with management_tools, much improved login.**
+
+**[Jamf's release notes](http://docs.jamf.com/9.98/casper-suite/release-notes/Bug_Fixes_and_Enhancements.html) for version 9.98 say that PI-003395 has been corrected. We're unable to test this and we're eager to hear from others if this is the case.**
+
+
 
 ## Contents
 
@@ -39,7 +45,7 @@ If you have any comments, questions, or other input, either [file an issue](../.
 If you intend to rebuild customized versions you will need the following tools, depending on your platform:
 
 - py2app for MacOS applications  (which you can download [here](https://pythonhosted.org/py2app/install.html))
-- cx_freeze for Windows applications (which you can download [here](https://anthony-tuininga.github.io/cx_Freeze/))
+- pyInstaller for Windows applications (which you can download [here](http://www.pyinstaller.org/))
 
 
 
@@ -138,6 +144,8 @@ My heartfelt thanks to the other members of the Mac Group and the IT administrat
 
 ## Update History
 
-| Date      | Version | Notes                   |
-| --------- | ------- | ----------------------- |
-| 2017.2.15 | 1.0.0   | Initial public release. |
+| Date      | Version | Notes                                    |
+| --------- | ------- | ---------------------------------------- |
+| 2017.4.11 | 1.1.0   | Logging with management_tools, login and search much improved. Other tweaks. |
+| 2017.2.15 | 1.0.0   | Initial public release.                  |
+

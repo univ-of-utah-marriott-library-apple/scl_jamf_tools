@@ -9,14 +9,14 @@ build_exe_options = {"packages": ["os"], "excludes": ["tkinter"]}
 base = None
 if sys.platform == "win32":
     base = "Win32GUI"
-	
+
 target = Executable(
-    script="tugboat2",
+    script="tugboat",
     base="Win32GUI",
-    icon="tugboat_icon2.ico"
+    icon="tugboat_icon.ico"
     )
 setup(  name = "Tugboat",
-        version = "1.5.0",
+        version = "1.5.2",
         description = "Put your stuff into JAMF!",
         options = {"build_exe": build_exe_options},
         executables = [Executable("tugboat_pc.py", base=base)])

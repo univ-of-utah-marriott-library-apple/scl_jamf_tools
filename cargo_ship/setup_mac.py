@@ -18,8 +18,8 @@ OPTIONS = {'argv_emulation': True,
         'CFBundleDisplayName': APP_NAME,
         'CFBundleGetInfoString': "Put your stuff into JAMF",
         'CFBundleIdentifier': "edu.utah.scl.cargoship",
-        'CFBundleVersion': "1.0.0",
-        'CFBundleShortVersionString': "1.0.0",
+        'CFBundleVersion': "1.0.1",
+        'CFBundleShortVersionString': "1.0.1",
         'NSHumanReadableCopyright': u"Copyright © 2017, University of Utah, All Rights Reserved"
     }
 

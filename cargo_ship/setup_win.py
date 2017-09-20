@@ -13,10 +13,10 @@ if sys.platform == "win32":
 target = Executable(
     script="cargo_ship.py",
     base="Win32GUI",
-    icon="tugboat_icon.ico"
+    icon="cargo_ship.ico"
     )
 setup(  name = "Cargo Ship",
-        version = "1.0.0",
+        version = "1.0.1",
         description = "Put your stuff into JAMF!",
 #       options = {"build_exe": build_exe_options},
         executables = [Executable("cargo_ship.py", base=base)])

@@ -38,6 +38,7 @@ from __future__ import print_function
 from Tkinter import *
 import ttk
 import tkMessageBox
+import tkFont
 import subprocess
 import os
 import re
@@ -49,19 +50,22 @@ import locale
 import sys
 import platform
 import webbrowser
+import inspect
 import ScrolledText
 from xml.dom.minidom import parseString
+from management_tools import loggers
 
 class Summarize(object):
     """
     Store keys, manipulate keys, output script and build the package
     """
 
-    def __init__(self, root, jamf_hostname, jamf_username, jamf_password):
+    def __init__(self, root, logger, jamf_hostname, jamf_username, jamf_password):
         """
         Initialize object and variables
         """
         self.root = root
+        self.logger = logger
         self.jamf_hostname = jamf_hostname
         self.jamf_username = jamf_username
         self.jamf_password = jamf_password
@@ -265,7 +269,7 @@ class Summarize(object):
         MjEwLy4tLCsqKSgnJiUkIyIhIB8eHRwbGhkYFxYVFBMSERAPDg0MCwoJCAcGBQQDAgEAADs=
         '''
 
-        self.root.title("Cargo Ship")
+        self.root.title("Cargo Ship 1.0.1")
 
         self.mainframe = ttk.Frame(self.root)
         self.mainframe.grid(column=0, row=0, sticky=NSEW)
@@ -361,6 +365,8 @@ class Summarize(object):
         """
         This method handles searching Jamf with a string
         """
+        self.logger.info("%s: activated" % inspect.stack()[0][3])
+
         def double_click(*event):
             """
             handle clicks
@@ -376,38 +382,50 @@ class Summarize(object):
 
             self.root.lift()
 
+        # you need to clear all the fields...
+        self.reset_display()
+        self.id_string.set("")
+
         if self.search_string.get() == "" or self.search_string.get().replace(" ", "") == "":
             if self.id_string.get():
                 self.query_jamf_id()
                 self.status_label.configure(style='Normal.TLabel')
                 self.status_string.set("Searched for ID.")
+                self.logger.info("%s: searched for ID: %r" % (inspect.stack()[0][3], self.id_string.get()))
             else:
+                self.logger.error("%s: No search string" % inspect.stack()[0][3])
                 self.status_label.configure(style='Warning.TLabel')
                 self.status_string.set("No search string entered.")
 
         else:
+            self.logger.info("%s: searched for string: %r" % (inspect.stack()[0][3], self.search_string.get()))
+
             #
             # erase previous displayed values
-            self.reset_display()
+#             self.reset_data()
 
             #
             # encode special characters included in search string
-            url = self.search_string.get()
-            url = urllib.quote(url, ':/()')
-            url = self.jamf_hostname + '/JSSResource/computers/match/*' + url + '*'
-            url = urllib.quote(url, ':/()')
+            url = self.jamf_hostname + '/JSSResource/computers/match/' + urllib.quote('*' + self.search_string.get() + '*')
+            self.logger.info("%s: searched with url: %r" % (inspect.stack()[0][3], url))
 
             #
             # communicate with Jamf server
             try:
                 request = urllib2.Request(url)
+                request.add_header('Accept', 'application/json')
                 request.add_header('Authorization', 'Basic ' + base64.b64encode(self.jamf_username + ':' + self.jamf_password))
 
                 response = urllib2.urlopen(request)
-
+                try:
+                    response_json = json.loads(response.read())
+                except Exception as exception_message:
+                    self.logger.error("issue parsing JSON: %r" % exception_message)
+                    return
                 #
                 # a non-200 response is bad, report and return
                 if response.code != 200:
+                    self.logger.error("%s: error from jss" % inspect.stack()[0][3])
                     self.status_label.configure(style='Warning.TLabel')
                     self.status_string.set("%i returned." % response.code)
                     return
@@ -416,44 +434,54 @@ class Summarize(object):
             # handle various communication errors
             except urllib2.HTTPError, error:
                 if error.code == 400:
+                    self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Request error."))
                     self.status_label.configure(style='Warning.TLabel')
-                    self.status_string.set("HTTP code %i: %s " % (error.code, "Request error."))
+                    self.status_string.set("HTTP code %i: %s" % (error.code, "Request error."))
                 elif error.code == 401:
+                    self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Authorization error."))
                     self.status_label.configure(style='Warning.TLabel')
-                    self.status_string.set("HTTP code %i: %s " % (error.code, "Authorization error."))
+                    self.status_string.set("HTTP code %i: %s" % (error.code, "Authorization error."))
                 elif error.code == 403:
+                    self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Permissions error."))
                     self.status_label.configure(style='Warning.TLabel')
-                    self.status_string.set("HTTP code %i: %s " % (error.code, "Permissions error."))
+                    self.status_string.set("HTTP code %i: %s" % (error.code, "Permissions error."))
                 elif error.code == 404:
+                    self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Resource not found."))
                     self.status_label.configure(style='Warning.TLabel')
-                    self.status_string.set("HTTP code %i: %s " % (error.code, "Resource not found."))
+                    self.status_string.set("HTTP code %i: %s" % (error.code, "Resource not found."))
                 elif error.code == 409:
                     contents = error.read()
                     error_message = re.findall(r"Error: (.*)<", contents)
+                    print("HTTP code %i: %s %s %s" % (error.code, "Resource conflict.", error_message[0], self.id_string.get()))
+                    self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Resource conflict. " + error_message[0]))
                     self.status_label.configure(style='Warning.TLabel')
-                    self.status_string.set("HTTP code %i: %s " % (error.code, "Resource conflict. " + error_message[0]))
+                    self.status_string.set("HTTP code %i: %s" % (error.code, "Resource conflict. " + error_message[0]))
                 else:
+                    self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Generic error."))
                     self.status_label.configure(style='Warning.TLabel')
-                    self.status_string.set("HTTP code %i: %s " % (error.code, "Generic error."))
-
+                    self.status_string.set("HTTP code %i: %s" % (error.code, "Generic error."))
                 return
             except urllib2.URLError, error:
+                self.logger.error("%s: Error contacting JSS." % (inspect.stack()[0][3]))
                 self.status_label.configure(style='Warning.TLabel')
-                self.status_string.set("Error contacting JAMF server.")
+                self.status_string.set("Error contacting JSS.")
                 return
             except Exception as exception_message:
+                self.logger.error("%s: Error querying Jamf. [%s]" % (inspect.stack()[0][3], exception_message))
                 self.status_label.configure(style='Warning.TLabel')
                 self.status_string.set("Error querying Jamf. [%s]" % exception_message)
                 return
 
             #
             # begin parsing data returned from Jamf
-            jamf_dom = parseString(response.read())
             self.status_label.configure(style='Normal.TLabel')
-            self.status_string.set("%i matches returned." % int(jamf_dom.getElementsByTagName('size')[0].childNodes[0].nodeValue))
+            self.status_string.set("%i matches returned." % len(response_json['computers']))
+            self.logger.info("%s: %r" % (inspect.stack()[0][3], self.status_string.get()))
 
+
+            search_font = tkFont.Font(font='TkDefaultFont')
             match_results = []
-
+            max_length = 0
             #
             # parse each returned computer element, retaining Jamf ID and Computer name
             # properly format value to display
@@ -464,12 +492,10 @@ class Summarize(object):
             #    "labmac-1a" to differentiate it from "labmac-1"
             # the values are added to a list containing the previously processed values as
             #   [sorting name, computer name, jamf id]
-
-            for node in jamf_dom.getElementsByTagName('computer'):
-                match_id = int(node.getElementsByTagName('id')[0].childNodes[0].nodeValue)
-                try:
-                    match_name = node.getElementsByTagName('name')[0].childNodes[0].nodeValue
-                except:
+            for node in response_json['computers']:
+                match_id = node['id']
+                match_name = node['name']
+                if not match_name:
                     match_name = "Not named."
 
                 name_trim = match_name
@@ -488,7 +514,9 @@ class Summarize(object):
                     name_trim = str(name_trim) + "a"
 
                 match_results.append([name_trim, match_name, match_id])
-
+                (string_width, string_height) = (search_font.measure(match_name +" (" + str(match_id) + ")"), search_font.metrics("linespace"))
+                if max_length < string_width:
+                    max_length = string_width
 
             #
             # if there were returned results, build and display search results window
@@ -507,13 +535,14 @@ class Summarize(object):
                 r_h = int(split_geom[0].split("x")[0])
                 r_pos_x = int(split_geom[1])
                 r_pos_y = int(split_geom[2])
+                string_width = int(max_length + 22)
 
-                search_window_geo = "%ix%i+%i+%i" % (190, 400, (r_h + r_pos_x + 10), (r_pos_y))
+                search_window_geo = "%ix%i+%i+%i" % (string_width, 400, (r_h + r_pos_x + 10), (r_pos_y))
                 search_window.geometry(search_window_geo)
 
                 search_window.title("Search results")
 
-                list_frame = ttk.Frame(search_window, width=190, height=400, padding=(4, 0, 0, 0))
+                list_frame = ttk.Frame(search_window, width=string_width, height=400, padding=(4, 0, 0, 0))
 
                 scrollbar = Scrollbar(list_frame)
                 scrollbar.pack(side=RIGHT, fill=Y)
@@ -544,6 +573,7 @@ class Summarize(object):
 
         #
         # communicate with Jamf server
+        self.logger.info("%s: activated" % inspect.stack()[0][3])
         try:
             url = self.jamf_hostname + '/JSSResource/osxconfigurationprofiles'
             request = urllib2.Request(url)
@@ -556,6 +586,7 @@ class Summarize(object):
             #
             # a non-200 response is bad, report and return
             if response.code != 200:
+                self.logger.error("%s: error from jss" % inspect.stack()[0][3])
                 self.status_label.configure(style='Warning.TLabel')
                 self.status_string.set("%i returned." % response.code)
                 return
@@ -564,25 +595,33 @@ class Summarize(object):
         # handle various communication errors
         except urllib2.HTTPError, error:
             if error.code == 400:
+                self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Request error."))
                 tkMessageBox.showerror("Error", ("HTTP code %i: %s " % (error.code, "Request error.")))
             elif error.code == 401:
+                self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Authorization error."))
                 tkMessageBox.showerror("Error", ("HTTP code %i: %s " % (error.code, "Authorization error.")))
             elif error.code == 403:
+                self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Permissions error."))
                 tkMessageBox.showerror("Error", ("HTTP code %i: %s " % (error.code, "Permissions error.")))
             elif error.code == 404:
+                self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Resource not found."))
                 tkMessageBox.showerror("Error", ("HTTP code %i: %s " % (error.code, "Resource not found.")))
             elif error.code == 409:
                 contents = error.read()
                 error_message = re.findall(r"Error: (.*)<", contents)
+                self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Resource conflict. " + error_message[0]))
                 tkMessageBox.showerror("Error", ("HTTP code %i: %s " % (error.code, "Resource conflict. " + error_message[0])))
             else:
+                self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Generic error."))
                 tkMessageBox.showerror("Error", ("HTTP code %i: %s " % (error.code, "Generic error.")))
 
             sys.exit()
         except urllib2.URLError, error:
+            self.logger.error("%s: Error contacting JSS." % (inspect.stack()[0][3]))
             tkMessageBox.showerror("Error", "Error contacting JAMF server.")
             sys.exit()
         except Exception as exception_message:
+            self.logger.error("%s: Error submitting to Jamf. [%s]" % (inspect.stack()[0][3], exception_message))
             tkMessageBox.showerror("Error", ("Error querying Jamf. [%s]" % exception_message))
             sys.exit()
 
@@ -591,6 +630,8 @@ class Summarize(object):
         for item in response_json['os_x_configuration_profiles']:
             tmp_profiles[item["id"]] = item["name"]
 
+        self.logger.info("%s: %i profiles" % (inspect.stack()[0][3], len(tmp_profiles)))
+        self.logger.info("%s: complete" % inspect.stack()[0][3])
         return tmp_profiles
 
     def build_policies(self):
@@ -611,6 +652,7 @@ class Summarize(object):
 
         #
         # communicate with Jamf server
+        self.logger.info("%s: activated" % inspect.stack()[0][3])
         try:
             url = self.jamf_hostname + '/JSSResource/policies'
             request = urllib2.Request(url)
@@ -623,6 +665,7 @@ class Summarize(object):
             #
             # a non-200 response is bad, report and return
             if response.code != 200:
+                self.logger.error("%s: error from jss" % inspect.stack()[0][3])
                 self.status_string.set("%i returned." % response.code)
                 return
 
@@ -630,29 +673,39 @@ class Summarize(object):
         # handle various communication errors
         except urllib2.HTTPError, error:
             if error.code == 400:
+                self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Request error."))
                 tkMessageBox.showerror("Error", ("HTTP code %i: %s " % (error.code, "Request error.")))
             elif error.code == 401:
+                self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Authorization error."))
                 tkMessageBox.showerror("Error", ("HTTP code %i: %s " % (error.code, "Authorization error.")))
             elif error.code == 403:
+                self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Permissions error."))
                 tkMessageBox.showerror("Error", ("HTTP code %i: %s " % (error.code, "Permissions error.")))
             elif error.code == 404:
+                self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Resource not found."))
                 tkMessageBox.showerror("Error", ("HTTP code %i: %s " % (error.code, "Resource not found.")))
             elif error.code == 409:
                 contents = error.read()
                 error_message = re.findall(r"Error: (.*)<", contents)
+                self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Resource conflict. " + error_message[0]))
                 tkMessageBox.showerror("Error", ("HTTP code %i: %s " % (error.code, "Resource conflict. " + error_message[0])))
             else:
+                self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Generic error."))
                 tkMessageBox.showerror("Error", ("HTTP code %i: %s " % (error.code, "Generic error.")))
 
             sys.exit()
         except urllib2.URLError, error:
+            self.logger.error("%s: Error contacting JSS." % (inspect.stack()[0][3]))
             tkMessageBox.showerror("Error", "Error contacting JAMF server.")
             sys.exit()
         except Exception as exception_message:
+            self.logger.error("%s: Error submitting to Jamf. [%s]" % (inspect.stack()[0][3], exception_message))
             tkMessageBox.showerror("Error", ("Error querying Jamf. [%s]" % exception_message))
             sys.exit()
 
         tmp_policies = []
+        policy_count = len(response_json['policies'])
+        self.logger.info("%s: %i policies" % (inspect.stack()[0][3], policy_count))
         for item in response_json['policies']:
             #
             # communicate with Jamf server
@@ -668,6 +721,7 @@ class Summarize(object):
                 #
                 # a non-200 response is bad, report and return
                 if response.code != 200:
+                    self.logger.error("%s: error from jss" % inspect.stack()[0][3])
                     self.status_label.configure(style='Warning.TLabel')
                     self.status_string.set("%i returned." % response.code)
                     return
@@ -676,25 +730,33 @@ class Summarize(object):
             # handle various communication errors
             except urllib2.HTTPError, error:
                 if error.code == 400:
+                    self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Request error."))
                     tkMessageBox.showerror("Error", ("HTTP code %i: %s " % (error.code, "Request error.")))
                 elif error.code == 401:
+                    self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Authorization error."))
                     tkMessageBox.showerror("Error", ("HTTP code %i: %s " % (error.code, "Authorization error.")))
                 elif error.code == 403:
+                    self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Permissions error."))
                     tkMessageBox.showerror("Error", ("HTTP code %i: %s " % (error.code, "Permissions error.")))
                 elif error.code == 404:
+                    self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Resource not found."))
                     tkMessageBox.showerror("Error", ("HTTP code %i: %s " % (error.code, "Resource not found.")))
                 elif error.code == 409:
                     contents = error.read()
                     error_message = re.findall(r"Error: (.*)<", contents)
+                    self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Resource conflict. " + error_message[0]))
                     tkMessageBox.showerror("Error", ("HTTP code %i: %s " % (error.code, "Resource conflict. " + error_message[0])))
                 else:
+                    self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Generic error."))
                     tkMessageBox.showerror("Error", ("HTTP code %i: %s " % (error.code, "Generic error.")))
 
                 sys.exit()
             except urllib2.URLError, error:
+                self.logger.error("%s: Error contacting JSS." % (inspect.stack()[0][3]))
                 tkMessageBox.showerror("Error", "Error contacting JAMF server.")
                 sys.exit()
             except Exception as exception_message:
+                self.logger.error("%s: Error submitting to Jamf. [%s]" % (inspect.stack()[0][3], exception_message))
                 tkMessageBox.showerror("Error", ("Error querying Jamf. [%s]" % exception_message))
                 sys.exit()
 
@@ -711,7 +773,9 @@ class Summarize(object):
                 tmp_cgroups.append(subpolicy['id'])
 
             tmp_policies.append([tmp_name, tmp_id, tmp_all, tmp_cs, tmp_cgroups])
+            self.logger.info("%s: %r %i of %i policies" % (inspect.stack()[0][3], tmp_name, len(tmp_policies), policy_count))
 
+        self.logger.info("%s: complete" % inspect.stack()[0][3])
         return tmp_policies
 
     def query_jamf_me(self):
@@ -724,6 +788,7 @@ class Summarize(object):
         # query's jamf and parses the ID from the record
         # and then calls the main query method
         # it's wasteful the first time it's called.
+        self.logger.info("%s: activated" % inspect.stack()[0][3])
         if not self.local_jamf_id:
 
             if platform.system() == 'Darwin':
@@ -752,6 +817,7 @@ class Summarize(object):
                 #
                 # a non-200 response is bad, report and return
                 if response.code != 200:
+                    self.logger.error("%s: error from jss" % inspect.stack()[0][3])
                     self.status_label.configure(style='Warning.TLabel')
                     self.status_string.set("%i returned." % response.code)
                     return
@@ -763,37 +829,46 @@ class Summarize(object):
             # handle various communication errors
             except urllib2.HTTPError, error:
                 if error.code == 400:
+                    self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Request error."))
                     self.status_label.configure(style='Warning.TLabel')
-                    self.status_string.set("HTTP code %i: %s " % (error.code, "Request error."))
+                    self.status_string.set("HTTP code %i: %s" % (error.code, "Request error."))
                 elif error.code == 401:
+                    self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Authorization error."))
                     self.status_label.configure(style='Warning.TLabel')
-                    self.status_string.set("HTTP code %i: %s " % (error.code, "Authorization error."))
+                    self.status_string.set("HTTP code %i: %s" % (error.code, "Authorization error."))
                 elif error.code == 403:
+                    self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Permissions error."))
                     self.status_label.configure(style='Warning.TLabel')
-                    self.status_string.set("HTTP code %i: %s " % (error.code, "Permissions error."))
+                    self.status_string.set("HTTP code %i: %s" % (error.code, "Permissions error."))
                 elif error.code == 404:
+                    self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Resource not found."))
                     self.status_label.configure(style='Warning.TLabel')
-                    self.status_string.set("HTTP code %i: %s " % (error.code, "Resource not found."))
+                    self.status_string.set("HTTP code %i: %s" % (error.code, "Resource not found."))
                 elif error.code == 409:
                     contents = error.read()
                     error_message = re.findall(r"Error: (.*)<", contents)
+                    print("HTTP code %i: %s %s %s" % (error.code, "Resource conflict.", error_message[0], self.id_string.get()))
+                    self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Resource conflict. " + error_message[0]))
                     self.status_label.configure(style='Warning.TLabel')
-                    self.status_string.set("HTTP code %i: %s " % (error.code, "Resource conflict. " + error_message[0]))
+                    self.status_string.set("HTTP code %i: %s" % (error.code, "Resource conflict. " + error_message[0]))
                 else:
+                    self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Generic error."))
                     self.status_label.configure(style='Warning.TLabel')
-                    self.status_string.set("HTTP code %i: %s " % (error.code, "Generic error."))
-
+                    self.status_string.set("HTTP code %i: %s" % (error.code, "Generic error."))
                 return
             except urllib2.URLError, error:
+                self.logger.error("%s: Error contacting JSS." % (inspect.stack()[0][3]))
                 self.status_label.configure(style='Warning.TLabel')
-                self.status_string.set("Error contacting JAMF server.")
+                self.status_string.set("Error contacting JSS.")
                 return
             except Exception as exception_message:
+                self.logger.error("%s: Error submitting to Jamf. [%s]" % (inspect.stack()[0][3], exception_message))
                 self.status_label.configure(style='Warning.TLabel')
-                self.status_string.set("Error querying Jamf. [%s]" % exception_message)
+                self.status_string.set("Error submitting to Jamf. [%s]" % exception_message)
                 return
 
         else:
+            self.logger.info("%s: local jamf id %r" % (inspect.stack()[0][3], self.local_jamf_id))
             self.id_string.set(self.local_jamf_id)
 
         self.query_jamf_id()
@@ -806,13 +881,16 @@ class Summarize(object):
         #
         # requests full record from Jamf for a specific computer
         #  call display method and pass record
+        self.logger.info("%s: activated" % inspect.stack()[0][3])
         self.reset_display()
 
         if not self.id_string.get():
+            self.logger.error("%s: No JAMF ID set" % inspect.stack()[0][3])
             self.status_label.configure(style='Warning.TLabel')
             self.status_string.set("No JAMF ID set.")
             return
         else:
+            self.logger.error("%s: Querying Jamf ID %s" % (inspect.stack()[0][3], self.id_string.get()))
             self.status_label.configure(style='Normal.TLabel')
             self.status_string.set("Querying Jamf ID %s." % self.id_string.get())
 
@@ -831,6 +909,7 @@ class Summarize(object):
             #
             # a non-200 response is bad, report and return
             if response.code != 200:
+                self.logger.error("%s: error from jss" % inspect.stack()[0][3])
                 self.status_label.configure(style='Warning.TLabel')
                 self.status_string.set("%i returned." % response.code)
                 return
@@ -839,36 +918,45 @@ class Summarize(object):
         # handle various communication errors
         except urllib2.HTTPError, error:
             if error.code == 400:
+                self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Request error."))
                 self.status_label.configure(style='Warning.TLabel')
-                self.status_string.set("HTTP code %i: %s " % (error.code, "Request error."))
+                self.status_string.set("HTTP code %i: %s" % (error.code, "Request error."))
             elif error.code == 401:
+                self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Authorization error."))
                 self.status_label.configure(style='Warning.TLabel')
-                self.status_string.set("HTTP code %i: %s " % (error.code, "Authorization error."))
+                self.status_string.set("HTTP code %i: %s" % (error.code, "Authorization error."))
             elif error.code == 403:
+                self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Permissions error."))
                 self.status_label.configure(style='Warning.TLabel')
-                self.status_string.set("HTTP code %i: %s " % (error.code, "Permissions error."))
+                self.status_string.set("HTTP code %i: %s" % (error.code, "Permissions error."))
             elif error.code == 404:
+                self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Resource not found."))
                 self.status_label.configure(style='Warning.TLabel')
-                self.status_string.set("HTTP code %i: %s " % (error.code, "Resource not found."))
+                self.status_string.set("HTTP code %i: %s" % (error.code, "Resource not found."))
             elif error.code == 409:
                 contents = error.read()
                 error_message = re.findall(r"Error: (.*)<", contents)
+                print("HTTP code %i: %s %s %s" % (error.code, "Resource conflict.", error_message[0], self.id_string.get()))
+                self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Resource conflict. " + error_message[0]))
                 self.status_label.configure(style='Warning.TLabel')
-                self.status_string.set("HTTP code %i: %s " % (error.code, "Resource conflict. " + error_message[0]))
+                self.status_string.set("HTTP code %i: %s" % (error.code, "Resource conflict. " + error_message[0]))
             else:
+                self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Generic error."))
                 self.status_label.configure(style='Warning.TLabel')
-                self.status_string.set("HTTP code %i: %s " % (error.code, "Generic error."))
-
+                self.status_string.set("HTTP code %i: %s" % (error.code, "Generic error."))
             return
         except urllib2.URLError, error:
+            self.logger.error("%s: Error contacting JSS." % (inspect.stack()[0][3]))
             self.status_label.configure(style='Warning.TLabel')
-            self.status_string.set("Error contacting JAMF server.")
+            self.status_string.set("Error contacting JSS.")
             return
         except Exception as exception_message:
+            self.logger.error("%s: Error submitting to Jamf. [%s]" % (inspect.stack()[0][3], exception_message))
             self.status_label.configure(style='Warning.TLabel')
-            self.status_string.set("Error querying Jamf. [%s]" % exception_message)
+            self.status_string.set("Error submitting to Jamf. [%s]" % exception_message)
             return
 
+        self.logger.error("%s: Queried Jamf ID %s" % (inspect.stack()[0][3], self.id_string.get()))
         self.display_info(response_json)
 
     def display_info(self, response_json):
@@ -878,6 +966,7 @@ class Summarize(object):
 
         #
         # performs the actual presentaion of data to the UI
+        self.logger.info("%s: activated" % inspect.stack()[0][3])
         try:
             locale.setlocale(locale.LC_ALL, 'en_US.utf8')
         except:
@@ -885,12 +974,12 @@ class Summarize(object):
 
         #
         # clear large display columns
-        self.ea_field.delete('1.0', END)
-        self.printer_field.delete('1.0', END)
-        self.group_field.delete('1.0', END)
-        self.package_field.delete('1.0', END)
-        self.jamf_profiles_field.delete('1.0', END)
-        self.jamf_policies_field.delete('1.0', END)
+        self.ea_field.delete('0.0', END)
+        self.printer_field.delete('0.0', END)
+        self.group_field.delete('0.0', END)
+        self.package_field.delete('0.0', END)
+        self.jamf_profiles_field.delete('0.0', END)
+        self.jamf_policies_field.delete('0.0', END)
 
         #
         # set StringVars
@@ -911,8 +1000,16 @@ class Summarize(object):
         processed_printers = []
         for item in raw_printers:
             processed_printers.append(item['name'])
-        for item in sorted(processed_printers, cmp=locale.strcoll, reverse=True):
-            self.printer_field.insert('1.0', item + "\n")
+
+        printer_display = ""
+        for index, item in enumerate(processed_printers):
+            if index == len(processed_printers):
+                printer_display += item
+            else:
+                printer_display += item + "\n"
+
+        self.printer_field.insert('0.0', printer_display)
+        self.printer_field.delete(END+'-2c', END)
 
         #
         # parse and display computer groups
@@ -920,9 +1017,15 @@ class Summarize(object):
         fmt_groups = []
         for item in raw_groups:
             fmt_groups.append([item.lower(), item])
-
-        for item in sorted(fmt_groups, reverse=True):
-            self.group_field.insert('1.0', item[1] + "\n")
+        group_display = ""
+        for index, item in enumerate(sorted(fmt_groups)):
+#             self.group_field.insert('1.0', item[1] + "\n")
+            if index == len(raw_groups):
+                group_display += item[1]
+            else:
+                group_display += item[1] + "\n"
+        self.group_field.insert('0.0', group_display)
+        self.group_field.delete(END+'-2c', END)
 
         #
         # parse and display EA's
@@ -951,6 +1054,7 @@ class Summarize(object):
                 self.ea_field.insert('1.0', ":" + str(item[2]) + "\n", ('NORM'))
 
             self.ea_field.insert('1.0', item[1], ('BOLD'))
+        self.ea_field.delete(END+'-2c', END)
 
 
         #
@@ -964,6 +1068,7 @@ class Summarize(object):
                 self.jamf_profiles_field.insert('1.0', self.jamf_profiles[item["id"]] + "\n")
             except:
                 pass
+        self.jamf_profiles_field.delete(END+'-2c', END)
 
         #
         # parse and display installed software
@@ -978,6 +1083,7 @@ class Summarize(object):
         for item in sorted(raw_packages['installed_by_casper'], cmp=locale.strcoll, reverse=True):
             self.package_field.insert('1.0', ':' + item + '\n', ('NORM'))
             self.package_field.insert('1.0', 'Casper', ('BOLD'))
+        self.package_field.delete(END+'-2c', END)
 
         #
         # parse and display policies
@@ -1011,24 +1117,27 @@ class Summarize(object):
 
         for item in sorted(fmt_policies, reverse=True):
             self.jamf_policies_field.insert('1.0', item[1] + "\n")
+        self.jamf_policies_field.delete(END+'-2c', END)
+
+
 
     def reset_display(self):
         """
         erase field contents
         """
+        self.logger.info("%s: activated" % inspect.stack()[0][3])
         self.computer_name_string.set("")
         self.fullname_string.set("")
         self.checkin_string.set("")
 
-        self.ea_field.delete('1.0', END)
-        self.printer_field.delete('1.0', END)
-        self.group_field.delete('1.0', END)
-        self.package_field.delete('1.0', END)
-        self.jamf_profiles_field.delete('1.0', END)
-        self.jamf_policies_field.delete('1.0', END)
+        self.ea_field.delete('0.0', END)
+        self.printer_field.delete('0.0', END)
+        self.group_field.delete('0.0', END)
+        self.package_field.delete('0.0', END)
+        self.jamf_profiles_field.delete('0.0', END)
+        self.jamf_policies_field.delete('0.0', END)
 
-
-def login():
+def login(logger):
     """
     if the user has proper privleges, consider them an authorized user and proceed
     """
@@ -1036,6 +1145,8 @@ def login():
         """
         jamf api call for login test
         """
+        logger.info("%s: activated" % inspect.stack()[0][3])
+
         try:
             url = jamf_hostname.get() + '/JSSResource/accounts/username/' + jamf_username.get()
             request = urllib2.Request(url)
@@ -1045,6 +1156,7 @@ def login():
             response = urllib2.urlopen(request)
 
             if response.code != 200:
+                logger.error("login: Invalid response from Jamf")
                 tkMessageBox.showerror("Jamf login", "Invalid response from Jamf")
                 root.destroy() # clean up after yourself!
                 sys.exit()
@@ -1063,27 +1175,36 @@ def login():
             # for every required privilege
             #  check if it's in user privileges
             #   decrement if yes
+            missing_privileges = []
+
             for item in required_privileges:
                 if item in user_privileges:
                     count_privileges -= 1
+                else:
+                   missing_privileges.append(item)
 
             #
             # if all require privileges accounted for, proceed
             # else alert and fail
             if count_privileges == 0:
+                logger.info("login: valid login. (%r)" % jamf_username.get())
                 root.destroy() # clean up after yourself!
                 return
             else:
+                logger.error("login: User %r lacks appropriate privileges: %r" % (jamf_username.get(), missing_privileges))
                 tkMessageBox.showerror("Jamf login", "User lacks appropriate privileges.")
 
         except:
+            logger.error("login: Invalid username or password. (%r)" % jamf_username.get())
             tkMessageBox.showerror("Jamf login", "Invalid username or password.")
             sys.exit()
 
         sys.exit()
 
+    logger.info("%s: activated" % inspect.stack()[0][3])
+
     #
-    # This is really important. This list contains the required rights.
+    # This is really important. This list contains the required rights for this application.
     required_privileges = ['Read Accounts', 'Read Computer Extension Attributes', 'Read Computers', 'Read OS X Configuration Profiles', 'Read Policies']
 
     root = Tk()
@@ -1092,7 +1213,7 @@ def login():
     jamf_hostname = StringVar()
 
     # customizable for specific deployment
-    jamf_hostname.set("https://your.jamf.server:8443")
+    jamf_hostname.set("https://your.jss.server:8443")
 
     #
     # build and display login screen
@@ -1132,12 +1253,17 @@ def login():
 
 def main():
 
-    jamf_hostname, jamf_username, jamf_password = login()
+    logger = loggers.file_logger(name='cargoship')
+    logger.info("Running Cargo Ship")
+    logger.info("Level: Method/function: Message")
+
+
+    jamf_hostname, jamf_username, jamf_password = login(logger)
     if not jamf_username:
         sys.exit(0)
 
     main_window = Tk()
-    my_app = Summarize(main_window, jamf_hostname, jamf_username, jamf_password)
+    my_app = Summarize(main_window, logger, jamf_hostname, jamf_username, jamf_password)
     main_window.mainloop()
 
 if __name__ == '__main__':
