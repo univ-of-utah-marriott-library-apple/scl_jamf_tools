@@ -12,11 +12,11 @@ This tool is identical to our inhouse version. However it can be customized to f
 
 I've been getting some feedback from users in environments with 150+ policies that it can take on the order of 8 minutes from login to UI display due to the need to parse each policy individually in order to build the required data structures. I'm taking this feedback in consideration and am looking at ways to possibly postpone this step until requested by the user.
 
-**4/11/17: Released version 1.5.2 of Cargo Ship. Lots of tweaks, added logging with management_tools, much improved login.**
+4/11/17: Released version 1.0.1 of Cargo Ship. Lots of tweaks, added logging with management_tools, much improved login.
 
-**[Jamf's release notes](http://docs.jamf.com/9.98/casper-suite/release-notes/Bug_Fixes_and_Enhancements.html) for version 9.98 say that PI-003395 has been corrected. We're unable to test this and we're eager to hear from others if this is the case.**
+[Jamf's release notes](http://docs.jamf.com/9.98/casper-suite/release-notes/Bug_Fixes_and_Enhancements.html) for version 9.98 say that PI-003395 has been corrected. We're unable to test this and we're eager to hear from others if this is the case.
 
-
+**1/3/18: Released version 1.0.3 of Cargo Ship. Improved LDAP logins, added multiprocessing to particularly resource-hungry area of code.**
 
 ## Contents
 
@@ -41,6 +41,8 @@ If you have any comments, questions, or other input, either [file an issue](../.
 ## System Requirements
 
 - Python 2.7+ (which you can download [here](https://www.python.org/download/))
+- Multiprocess 0.70.5+ (which you can download [here](https://pypi.python.org/pypi/multiprocess))
+- Management tools (which you can download [here](https://github.com/univ-of-utah-marriott-library-apple/management_tools/releases))
 
 If you intend to rebuild customized versions you will need the following tools, depending on your platform:
 
@@ -144,8 +146,9 @@ My heartfelt thanks to the other members of the Mac Group and the IT administrat
 
 ## Update History
 
-| Date      | Version | Notes                                    |
-| --------- | ------- | ---------------------------------------- |
-| 2017.4.11 | 1.1.0   | Logging with management_tools, login and search much improved. Other tweaks. |
-| 2017.2.15 | 1.0.0   | Initial public release.                  |
+| Date       | Version | Notes                                    |
+| ---------- | ------- | ---------------------------------------- |
+| 2018.01.03 | 1.0.3   | Improved LDAP logins, multiprocess policy fetching. |
+| 2017.04.11 | 1.0.1   | Logging with management_tools, login and search much improved. Other tweaks. |
+| 2017.02.15 | 1.0.0   | Initial public release.                  |
 

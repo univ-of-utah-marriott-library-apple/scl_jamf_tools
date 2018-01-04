@@ -23,7 +23,7 @@
 #    1.5.0  2017.02.15      Initial public release. tjm
 #    1.5.2  2017.02.15      Logging with management_tools, login and search
 #                           much improved, top user improved. Other tweaks. tjm
-#
+#    1.5.3  2018.1.xx      Added LDAP login logic. tjm
 #
 ################################################################################
 
@@ -342,7 +342,7 @@ class Computer(object):
         BAMCAQAAOw==
         '''
 
-        self.root.title("Tugboat 1.5.2")
+        self.root.title("Tugboat 1.5.3")
 
         self.mainframe = ttk.Frame(self.root)
 
@@ -1470,64 +1470,173 @@ def login(logger):
         """
         jamf api call for login test
         """
-        logger.info("%s: activated" % inspect.stack()[0][3])
-        try:
-            url = jamf_hostname.get() + '/JSSResource/accounts/username/' + jamf_username.get()
-            request = urllib2.Request(url)
-            request.add_header('Accept', 'application/json')
-            request.add_header('Authorization', 'Basic ' + base64.b64encode(jamf_username.get() + ':' + jamf_password.get()))
 
-            response = urllib2.urlopen(request)
+        def call_jss(logger, api_call):
+            """
+            consolidate API calls to single function
+            pass in logger and api call.
+            """
+            logger.info("%s: activated" % inspect.stack()[0][3])
 
-            if response.code != 200:
-                logger.error("login: Invalid response from Jamf")
-                tkMessageBox.showerror("Jamf login", "Invalid response from Jamf")
-                root.destroy() # clean up after yourself!
-                sys.exit()
+            try:
+                url = jamf_hostname.get() + '/JSSResource/' + api_call
 
-            response_json = json.loads(response.read())
+                logger.info("%s called with %s" % (inspect.stack()[0][3], api_call))
+
+                request = urllib2.Request(url)
+                request.add_header('Accept', 'application/json')
+                request.add_header('Authorization', 'Basic ' + base64.b64encode(jamf_username.get() + ':' + jamf_password.get()))
+
+                response = urllib2.urlopen(request)
+
+                logger.info("Code returned: %s %s" % (response.code, api_call))
+
+                if response.code != 200:
+                    logger.error("login: Invalid response from Jamf (" + api_call + ")")
+                    tkMessageBox.showerror("Jamf login", "Invalid response from Jamf")
+                    root.destroy() # clean up after yourself!
+                    sys.exit()
+
+                response_json = json.loads(response.read())
+
+                return response_json
 
             #
-            # store list of user privileges
-            user_privileges = response_json['account']['privileges']['jss_objects']
+            # handle various communication errors
+            except urllib2.HTTPError, error:
 
-            #
-            # stop number of require privileges
-            count_privileges = len(required_privileges)
+                logger.error("Code returned: %s %s" % (response.code, api_call))
 
-            #
-            # for every required privilege
-            #  check if it's in user privileges
-            #   decrement if yes
-            # maintain list of missing require privileges
-            missing_privileges = []
-
-            for item in required_privileges:
-                if item in user_privileges:
-                    count_privileges -= 1
+                if error.code == 401:
+                    logger.error("%s: Invalid username or password. (%r) (%s)" % (inspect.stack()[0][3], jamf_username.get(), api_call))
+                    tkMessageBox.showerror("Jamf login", "Invalid username or password.")
                 else:
-                    missing_privileges.append(item)
+                    logger.error("%s: Error communicating with JSS. %s %s" % (inspect.stack()[0][3], jamf_hostname.get(), api_call))
+                    tkMessageBox.showerror("Jamf login", "HTTP error from:\n%s" % jamf_hostname.get())
+            except urllib2.URLError:
+                logger.error("%s: Error contacting JSS: %s %s" % (inspect.stack()[0][3], jamf_hostname.get(), api_call))
+                tkMessageBox.showerror("Jamf login", "Unable to contact:\n%s" % jamf_hostname.get())
+            except Exception as exception_message:
+                logger.error("%s: Generic error. (%r) %s" % (inspect.stack()[0][3], exception_message, api_call))
+                tkMessageBox.showerror("Jamf login", "Generic error from %s." % jamf_hostname.get())
 
             #
-            # if all require privileges accounted for, proceed
-            # else alert and fail
-            if count_privileges == 0:
-                logger.info("login: valid login. (%r)" % jamf_username.get())
+            # handle bad condition exits here...
+            logger.error("%s: Exiting, Error calling %s" % (inspect.stack()[0][3], api_call))
+            sys.exit()
+
+        logger.info("%s: activated" % inspect.stack()[0][3])
+
+        try:
+            # Attempt to verify LDAP users.
+            #   1. Pull JSS acounts for users and groups
+            #   2. Pull LDAP servers
+            #   3. Build list of valid groups, those with appropriate rights
+            #   4. Check each LDAP server for valid groups the user is a member of, login if found
+            #   5. Fall back to jss user login, check account for appropriate rights
+
+            jss_accounts = call_jss(logger, 'accounts')
+
+            raw_ldap = call_jss(logger, 'ldapservers')
+            ldap_servers = raw_ldap['ldap_servers']
+            logger.info("JSS LDAP servers: %r" % ldap_servers)
+
+            #
+            # store list of user and group privileges
+            user_list = jss_accounts['accounts']['users']
+            group_list = jss_accounts['accounts']['groups']
+
+            #
+            # find groups on jss that have required_privileges
+            valid_groups = []
+            for item in group_list:
+                raw_privs = call_jss(logger, 'accounts/groupid/' + str(item['id']))
+                this_group_privs = raw_privs['group']['privileges']['jss_objects']
+
+                count_privileges = len(required_privileges)
+
+                for this_privilege in required_privileges:
+                    if this_privilege in this_group_privs:
+                        count_privileges -= 1
+
+                if count_privileges == 0:
+                    logger.info("%s is valid." % item['name'])
+                    valid_groups.append([item['id'], item['name']])
+
+            #
+            # find servers with valid groups the user is a member of
+            valid_servers = []
+            for server in ldap_servers:
+                for group in valid_groups:
+                    raw_group_membership = call_jss(logger, 'ldapservers/id/' + str(server['id']) + '/group/' + urllib.quote(str(group[1])) + '/user/' + jamf_username.get())
+
+                    if raw_group_membership['ldap_users']:
+                        valid_servers.append(server['name'])
+
+            #
+            # if we found a valid server, proceed to app
+            if valid_servers:
+                logger.info('valid server found, login successful.')
                 root.destroy() # clean up after yourself!
                 return
-            else:
-                logger.error("login: User %r lacks appropriate privileges: %r" % (jamf_username.get(), missing_privileges))
-                tkMessageBox.showerror("Jamf login", "User lacks appropriate privileges.")
 
-        except:
-            logger.error("login: Invalid username or password. (%r)" % jamf_username.get())
-            tkMessageBox.showerror("Jamf login", "Invalid username or password.")
-            sys.exit()
+            #
+            # check users account privileges for required rights
+            else:
+                raw_privileges = call_jss(logger, 'accounts/username/' + jamf_username.get())
+                user_privileges = raw_privileges['account']['privileges']['jss_objects']
+
+                #
+                # stop number of require privileges
+                count_privileges = len(required_privileges)
+
+                #
+                # for every required privilege
+                #  check if it's in user privileges
+                #   decrement if yes
+                # maintain list of missing require privileges
+                missing_privileges = []
+
+                for item in required_privileges:
+                    if item in user_privileges:
+                        count_privileges -= 1
+                    else:
+                        missing_privileges.append(item)
+
+                #
+                # if all require privileges accounted for, proceed
+                # else alert and fail
+                if count_privileges == 0:
+                    logger.info("login: valid login. (%r)" % jamf_username.get())
+                    root.destroy() # clean up after yourself!
+                    return
+                else:
+                    logger.error("login: User %r lacks appropriate privileges: %r" % (jamf_username.get(), missing_privileges))
+                    tkMessageBox.showerror("Jamf login", "User lacks appropriate privileges.\n%r" % missing_privileges)
+
+        #
+        # handle various communication errors
+        except urllib2.HTTPError, error:
+
+            logger.info("Code returned: %s" % error.code)
+
+            if error.code == 401:
+                logger.error("%s: Invalid username or password. (%r)" % (inspect.stack()[0][3], jamf_username.get()))
+                tkMessageBox.showerror("Jamf login", "Invalid username or password.")
+            else:
+                logger.error("%s: Error communicating with JSS. %s" % (inspect.stack()[0][3], jamf_hostname.get()))
+                tkMessageBox.showerror("Jamf login", "HTTP error from:\n%s" % jamf_hostname.get())
+        except urllib2.URLError:
+            logger.error("%s: Error contacting JSS: %s" % (inspect.stack()[0][3], jamf_hostname.get()))
+            tkMessageBox.showerror("Jamf login", "Unable to contact:\n%s" % jamf_hostname.get())
+        except Exception as exception_message:
+            logger.error("%s: Generic error. (%r)" % (inspect.stack()[0][3], exception_message))
+            tkMessageBox.showerror("Jamf login", "Generic error from %s." % jamf_hostname.get())
 
         sys.exit()
 
     #
-    # This is really important. This list contains the required rights.
+    # This is really important. This list contains the required rights for the fields we need to access.
     required_privileges = ['Read Accounts', 'Read Buildings', 'Read Computers', 'Update Computers', 'Read Departments', 'Read User', 'Update User']
 
     root = Tk()
@@ -1535,7 +1644,7 @@ def login(logger):
     jamf_password = StringVar()
     jamf_hostname = StringVar()
 
-    # customizable for specific deployments
+    # customizable for specific deployment
     jamf_hostname.set("https://your.jamf.server:8443")
 
     #

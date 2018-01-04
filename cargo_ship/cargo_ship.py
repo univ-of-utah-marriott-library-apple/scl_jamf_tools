@@ -21,6 +21,16 @@
 #
 #    1.0.0  2017.02.15      Initial public release. tjm
 #
+#    1.0.1  2017.04.11      Many tweaks. tjm
+#                           management tools logging integrated
+#                           login funtion much improved
+#                           search function much improved
+#                           display fields improved
+#
+#    1.0.2  2017.05.24      Added last inventory date. tjm
+#
+#    1.0.3  2018.1.xx       Added LDAP login logic. tjm
+#                           Added multiprocess policy parsing
 #
 ################################################################################
 
@@ -36,9 +46,9 @@
 
 from __future__ import print_function
 from Tkinter import *
+import tkFont
 import ttk
 import tkMessageBox
-import tkFont
 import subprocess
 import os
 import re
@@ -50,6 +60,8 @@ import locale
 import sys
 import platform
 import webbrowser
+import multiprocess
+import time
 import inspect
 import ScrolledText
 from xml.dom.minidom import parseString
@@ -77,6 +89,7 @@ class Summarize(object):
         self.status_string = StringVar()
         self.checkin_string = StringVar()
         self.id_string = StringVar()
+        self.inventory_string = StringVar()
 
         self.status_string.set("Ready.")
 
@@ -269,7 +282,7 @@ class Summarize(object):
         MjEwLy4tLCsqKSgnJiUkIyIhIB8eHRwbGhkYFxYVFBMSERAPDg0MCwoJCAcGBQQDAgEAADs=
         '''
 
-        self.root.title("Cargo Ship 1.0.1")
+        self.root.title("Cargo Ship v1.0.3")
 
         self.mainframe = ttk.Frame(self.root)
         self.mainframe.grid(column=0, row=0, sticky=NSEW)
@@ -318,6 +331,11 @@ class Summarize(object):
         self.checkin_display = ttk.Entry(self.mainframe, width=31, state="readonly", textvariable=self.checkin_string)
         self.checkin_display.config(font=('', 12, 'bold'))
         self.checkin_display.grid(column=4, row=60, sticky=EW)
+
+        ttk.Label(self.mainframe, text="Last Inventory:").grid(column=3, row=70, sticky=E)
+        self.inventory_display = ttk.Entry(self.mainframe, width=31, state="readonly", textvariable=self.inventory_string)
+        self.inventory_display.config(font=('', 12, 'bold'))
+        self.inventory_display.grid(column=4, row=70, sticky=EW)
 
         ttk.Label(self.mainframe, text="User's Name:").grid(column=1, row=70, sticky=E)
         self.uname_display = ttk.Entry(self.mainframe, width=31, state="readonly", textvariable=self.fullname_string)
@@ -621,7 +639,7 @@ class Summarize(object):
             tkMessageBox.showerror("Error", "Error contacting JAMF server.")
             sys.exit()
         except Exception as exception_message:
-            self.logger.error("%s: Error submitting to Jamf. [%s]" % (inspect.stack()[0][3], exception_message))
+            self.logger.error("%s: Error querying Jamf. [%s]" % (inspect.stack()[0][3], exception_message))
             tkMessageBox.showerror("Error", ("Error querying Jamf. [%s]" % exception_message))
             sys.exit()
 
@@ -641,14 +659,77 @@ class Summarize(object):
         #
         # communicate with Jamf and grab generic policy list
         #
-        # communicate with Jamf and grab each individual policy record
         #             --- this is the slow bit ---
+        # communicate with Jamf and grab each individual policy record
         #  with each record
         #   retain name, id and if the policy applies to all computers
         #   retain IDs of specific computers the policy applies to
         #   retain ID's and names of computer groups the policy applies to
         #  add these values as a list to previously processed policies
         # this will not proceed quickly.
+
+
+        #
+        # There have to be better ways to handle this...
+        #
+        # Split off account info, to limit the number of parameters going into the mapped funtion
+        global local_jamf_hostname
+        global local_jamf_password
+        global local_jamf_username
+        global local_logger
+
+        local_jamf_hostname = self.jamf_hostname
+        local_jamf_password = self.jamf_password
+        local_jamf_username = self.jamf_username
+        local_logger = self.logger
+
+        def fetch_parse_policy(this_policy):
+            """
+            pull policy from jss and parse.
+            does it make more sense to parse outside the function?!? speedwise?
+            """
+            local_logger.info("fetch_parse_policy: fetching policy #%s" % this_policy)
+
+            #
+            # communicate with Jamf server
+            try:
+                url = local_jamf_hostname + '/JSSResource/policies/id/'+ this_policy +'/subset/general&scope'
+                request = urllib2.Request(url)
+                request.add_header('Accept', 'application/json')
+                request.add_header('Authorization', 'Basic ' + base64.b64encode(local_jamf_username + ':' + local_jamf_password))
+
+                response = urllib2.urlopen(request)
+                response_json = json.loads(response.read())
+
+                #
+                # a non-200 response is bad, report and return
+                if response.code != 200:
+                    local_logger.error("fetch_parse_policy: Unexpected response: %i" % response.code)
+                    return None
+
+            #
+            # nowhere near enough error handling...
+            # do we really need to exit? try the policy again? Report the error when the UI is drawn?
+            # add policy to list, how? it's a single function...
+            #
+            #
+            # return the policy with the name and set an error flag in the list?
+            #   return([tmp_name, tmp_id, tmp_all, tmp_cs, tmp_cgroups, error_condition]) ?!?!?
+            # check tmp_policies at the end for error flags?
+            #   pop the bad policy off the list and note the error in the UI?
+            #   quit exit and not the error in the dialog?
+            #   have the ui check for error and color red for every machine?
+            #   parse final list for errors "error-103"?
+            #
+            #
+            #
+            except Exception as exception_message:
+                local_logger.error("fetch_parse_policy: Error querying Jamf. [%s] Exiting." % (exception_message))
+                sys.exit()
+
+            #
+            # return the whole response, postpone processing until all data retrieved
+            return response_json
 
         #
         # communicate with Jamf server
@@ -699,84 +780,50 @@ class Summarize(object):
             tkMessageBox.showerror("Error", "Error contacting JAMF server.")
             sys.exit()
         except Exception as exception_message:
-            self.logger.error("%s: Error submitting to Jamf. [%s]" % (inspect.stack()[0][3], exception_message))
+            self.logger.error("%s: Error querying Jamf. [%s]" % (inspect.stack()[0][3], exception_message))
             tkMessageBox.showerror("Error", ("Error querying Jamf. [%s]" % exception_message))
             sys.exit()
 
         tmp_policies = []
         policy_count = len(response_json['policies'])
         self.logger.info("%s: %i policies" % (inspect.stack()[0][3], policy_count))
+
+        policy_id_list = []
         for item in response_json['policies']:
-            #
-            # communicate with Jamf server
-            try:
-                url = self.jamf_hostname + '/JSSResource/policies/id/'+ str(item['id']) +'/subset/general&scope'
-                request = urllib2.Request(url)
-                request.add_header('Accept', 'application/json')
-                request.add_header('Authorization', 'Basic ' + base64.b64encode(self.jamf_username + ':' + self.jamf_password))
+            policy_id_list.append(str(item['id']))
 
-                response = urllib2.urlopen(request)
-                response_json = json.loads(response.read())
+        pool = multiprocess.Pool()
 
-                #
-                # a non-200 response is bad, report and return
-                if response.code != 200:
-                    self.logger.error("%s: error from jss" % inspect.stack()[0][3])
-                    self.status_label.configure(style='Warning.TLabel')
-                    self.status_string.set("%i returned." % response.code)
-                    return
+        start_time = time.time()
 
-            #
-            # handle various communication errors
-            except urllib2.HTTPError, error:
-                if error.code == 400:
-                    self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Request error."))
-                    tkMessageBox.showerror("Error", ("HTTP code %i: %s " % (error.code, "Request error.")))
-                elif error.code == 401:
-                    self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Authorization error."))
-                    tkMessageBox.showerror("Error", ("HTTP code %i: %s " % (error.code, "Authorization error.")))
-                elif error.code == 403:
-                    self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Permissions error."))
-                    tkMessageBox.showerror("Error", ("HTTP code %i: %s " % (error.code, "Permissions error.")))
-                elif error.code == 404:
-                    self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Resource not found."))
-                    tkMessageBox.showerror("Error", ("HTTP code %i: %s " % (error.code, "Resource not found.")))
-                elif error.code == 409:
-                    contents = error.read()
-                    error_message = re.findall(r"Error: (.*)<", contents)
-                    self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Resource conflict. " + error_message[0]))
-                    tkMessageBox.showerror("Error", ("HTTP code %i: %s " % (error.code, "Resource conflict. " + error_message[0])))
-                else:
-                    self.logger.error("%s: HTTP code %i: %s" % (inspect.stack()[0][3], error.code, "Generic error."))
-                    tkMessageBox.showerror("Error", ("HTTP code %i: %s " % (error.code, "Generic error.")))
+        tmp_policies = pool.map(fetch_parse_policy, policy_id_list)
 
-                sys.exit()
-            except urllib2.URLError, error:
-                self.logger.error("%s: Error contacting JSS." % (inspect.stack()[0][3]))
-                tkMessageBox.showerror("Error", "Error contacting JAMF server.")
-                sys.exit()
-            except Exception as exception_message:
-                self.logger.error("%s: Error submitting to Jamf. [%s]" % (inspect.stack()[0][3], exception_message))
-                tkMessageBox.showerror("Error", ("Error querying Jamf. [%s]" % exception_message))
-                sys.exit()
+        elapsed_time = time.time() - start_time
+        self.logger.info("%s: Elapsed time spent fetching and parsing policies: %r" % (inspect.stack()[0][3], elapsed_time))
 
-            tmp_name = response_json['policy']['general']['name']
-            tmp_id = response_json['policy']['general']['id']
-            tmp_all = response_json['policy']['scope']['all_computers']
 
-            tmp_cgroups = []
-            for subpolicy in response_json['policy']['scope']['computer_groups']:
-                tmp_cgroups.append(subpolicy['name'])
+        #
+        # postponed processing from mapped function
+        # hoping for additional performance increases
+        final_policies = []
+        for item in tmp_policies:
+            tmp_name = item['policy']['general']['name']
+            tmp_id = item['policy']['general']['id']
+            tmp_allcomputers = item['policy']['scope']['all_computers']
 
-            tmp_cs = []
-            for subpolicy in response_json['policy']['scope']['computers']:
-                tmp_cgroups.append(subpolicy['id'])
+            tmp_scopecomputergroups = []
+            for subpolicy in item['policy']['scope']['computer_groups']:
+                tmp_scopecomputergroups.append(subpolicy['name'])
 
-            tmp_policies.append([tmp_name, tmp_id, tmp_all, tmp_cs, tmp_cgroups])
-            self.logger.info("%s: %r %i of %i policies" % (inspect.stack()[0][3], tmp_name, len(tmp_policies), policy_count))
+            tmp_scopecomputers = []
+            for subpolicy in item['policy']['scope']['computers']:
+                tmp_scopecomputers.append(subpolicy['id'])
+
+            final_policies.append([tmp_name, tmp_id, tmp_allcomputers, tmp_scopecomputers, tmp_scopecomputergroups])
+
 
         self.logger.info("%s: complete" % inspect.stack()[0][3])
-        return tmp_policies
+        return final_policies
 
     def query_jamf_me(self):
         """
@@ -862,9 +909,9 @@ class Summarize(object):
                 self.status_string.set("Error contacting JSS.")
                 return
             except Exception as exception_message:
-                self.logger.error("%s: Error submitting to Jamf. [%s]" % (inspect.stack()[0][3], exception_message))
+                self.logger.error("%s: Error querying Jamf. [%s]" % (inspect.stack()[0][3], exception_message))
                 self.status_label.configure(style='Warning.TLabel')
-                self.status_string.set("Error submitting to Jamf. [%s]" % exception_message)
+                self.status_string.set("Error querying Jamf. [%s]" % exception_message)
                 return
 
         else:
@@ -890,7 +937,7 @@ class Summarize(object):
             self.status_string.set("No JAMF ID set.")
             return
         else:
-            self.logger.error("%s: Querying Jamf ID %s" % (inspect.stack()[0][3], self.id_string.get()))
+            self.logger.info("%s: Querying Jamf ID %s" % (inspect.stack()[0][3], self.id_string.get()))
             self.status_label.configure(style='Normal.TLabel')
             self.status_string.set("Querying Jamf ID %s." % self.id_string.get())
 
@@ -951,12 +998,12 @@ class Summarize(object):
             self.status_string.set("Error contacting JSS.")
             return
         except Exception as exception_message:
-            self.logger.error("%s: Error submitting to Jamf. [%s]" % (inspect.stack()[0][3], exception_message))
+            self.logger.error("%s: Error querying Jamf. [%s]" % (inspect.stack()[0][3], exception_message))
             self.status_label.configure(style='Warning.TLabel')
-            self.status_string.set("Error submitting to Jamf. [%s]" % exception_message)
+            self.status_string.set("Error querying Jamf. [%s]" % exception_message)
             return
 
-        self.logger.error("%s: Queried Jamf ID %s" % (inspect.stack()[0][3], self.id_string.get()))
+        self.logger.info("%s: Queried Jamf ID %s" % (inspect.stack()[0][3], self.id_string.get()))
         self.display_info(response_json)
 
     def display_info(self, response_json):
@@ -994,6 +1041,15 @@ class Summarize(object):
             self.checkin_display.config(font=('', 12, 'normal italic'))
             self.checkin_string.set('No value')
 
+        if response_json['computer']['general']['report_date']:
+            self.inventory_display.config(font=('', 12, 'bold'))
+            self.inventory_string.set(response_json['computer']['general']['report_date'])
+        else:
+            self.inventory_display.config(font=('', 12, 'normal italic'))
+            self.inventory_string.set('No value')
+
+
+
         #
         # parse and display printers
         raw_printers = response_json['computer']['hardware']['mapped_printers']
@@ -1019,7 +1075,6 @@ class Summarize(object):
             fmt_groups.append([item.lower(), item])
         group_display = ""
         for index, item in enumerate(sorted(fmt_groups)):
-#             self.group_field.insert('1.0', item[1] + "\n")
             if index == len(raw_groups):
                 group_display += item[1]
             else:
@@ -1097,18 +1152,10 @@ class Summarize(object):
         # sort and display the list.
         valid_policies = []
         for item in self.jamf_policies:
-            if item[2] == 'True':
-                if item[0] not in valid_policies:
-                    valid_policies.append[item[0]]
-            else:
-                if int(self.id_string.get()) in item[3]:
+            for subitem in raw_groups:
+                if subitem in item[4]:
                     if item[0] not in valid_policies:
-                        valid_policies.append[item[0]]
-
-                for subitem in raw_groups:
-                    if subitem in item[4]:
-                        if item[0] not in valid_policies:
-                            valid_policies.append(item[0])
+                        valid_policies.append(item[0])
 
         fmt_policies = []
         for item in valid_policies:
@@ -1129,6 +1176,7 @@ class Summarize(object):
         self.computer_name_string.set("")
         self.fullname_string.set("")
         self.checkin_string.set("")
+        self.inventory_string.set("")
 
         self.ea_field.delete('0.0', END)
         self.printer_field.delete('0.0', END)
@@ -1145,67 +1193,174 @@ def login(logger):
         """
         jamf api call for login test
         """
+
+        def call_jss(logger, api_call):
+            """
+            consolidate API calls to single function
+            pass in logger and api call.
+            """
+            logger.info("%s: activated" % inspect.stack()[0][3])
+
+            try:
+                url = jamf_hostname.get() + '/JSSResource/' + api_call
+
+                logger.info("%s called with %s" % (inspect.stack()[0][3], api_call))
+
+                request = urllib2.Request(url)
+                request.add_header('Accept', 'application/json')
+                request.add_header('Authorization', 'Basic ' + base64.b64encode(jamf_username.get() + ':' + jamf_password.get()))
+
+                response = urllib2.urlopen(request)
+
+                logger.info("Code returned: %s %s" % (response.code, api_call))
+
+                if response.code != 200:
+                    logger.error("login: Invalid response from Jamf (" + api_call + ")")
+                    tkMessageBox.showerror("Jamf login", "Invalid response from Jamf")
+                    root.destroy() # clean up after yourself!
+                    sys.exit()
+
+                response_json = json.loads(response.read())
+
+                return response_json
+
+            #
+            # handle various communication errors
+            except urllib2.HTTPError, error:
+
+                logger.error("Code returned: %s %s" % (response.code, api_call))
+
+                if error.code == 401:
+                    logger.error("%s: Invalid username or password. (%r) (%s)" % (inspect.stack()[0][3], jamf_username.get(), api_call))
+                    tkMessageBox.showerror("Jamf login", "Invalid username or password.")
+                else:
+                    logger.error("%s: Error communicating with JSS. %s %s" % (inspect.stack()[0][3], jamf_hostname.get(), api_call))
+                    tkMessageBox.showerror("Jamf login", "HTTP error from:\n%s" % jamf_hostname.get())
+            except urllib2.URLError:
+                logger.error("%s: Error contacting JSS: %s %s" % (inspect.stack()[0][3], jamf_hostname.get(), api_call))
+                tkMessageBox.showerror("Jamf login", "Unable to contact:\n%s" % jamf_hostname.get())
+            except Exception as exception_message:
+                logger.error("%s: Generic error. (%r) %s" % (inspect.stack()[0][3], exception_message, api_call))
+                tkMessageBox.showerror("Jamf login", "Generic error from %s." % jamf_hostname.get())
+
+            #
+            # handle bad condition exits here...
+            logger.error("%s: Exiting, Error calling %s" % (inspect.stack()[0][3], api_call))
+            sys.exit()
+
         logger.info("%s: activated" % inspect.stack()[0][3])
 
         try:
-            url = jamf_hostname.get() + '/JSSResource/accounts/username/' + jamf_username.get()
-            request = urllib2.Request(url)
-            request.add_header('Accept', 'application/json')
-            request.add_header('Authorization', 'Basic ' + base64.b64encode(jamf_username.get() + ':' + jamf_password.get()))
+            # Attempt to verify LDAP users.
+            #   1. Pull JSS acounts for users and groups
+            #   2. Pull LDAP servers
+            #   3. Build list of valid groups, those with appropriate rights
+            #   4. Check each LDAP server for valid groups the user is a member of, login if found
+            #   5. Fall back to jss user login, check account for appropriate rights
 
-            response = urllib2.urlopen(request)
+            jss_accounts = call_jss(logger, 'accounts')
 
-            if response.code != 200:
-                logger.error("login: Invalid response from Jamf")
-                tkMessageBox.showerror("Jamf login", "Invalid response from Jamf")
-                root.destroy() # clean up after yourself!
-                sys.exit()
-
-            response_json = json.loads(response.read())
+            raw_ldap = call_jss(logger, 'ldapservers')
+            ldap_servers = raw_ldap['ldap_servers']
+            logger.info("JSS LDAP servers: %r" % ldap_servers)
 
             #
-            # store list of user privileges
-            user_privileges = response_json['account']['privileges']['jss_objects']
+            # store list of user and group privileges
+            user_list = jss_accounts['accounts']['users']
+            group_list = jss_accounts['accounts']['groups']
 
             #
-            # stop number of require privileges
-            count_privileges = len(required_privileges)
+            # find groups on jss that have required_privileges
+            valid_groups = []
+            for item in group_list:
+                raw_privs = call_jss(logger, 'accounts/groupid/' + str(item['id']))
+                this_group_privs = raw_privs['group']['privileges']['jss_objects']
+
+                count_privileges = len(required_privileges)
+
+                for this_privilege in required_privileges:
+                    if this_privilege in this_group_privs:
+                        count_privileges -= 1
+
+                if count_privileges == 0:
+                    logger.info("%s is valid." % item['name'])
+                    valid_groups.append([item['id'], item['name']])
 
             #
-            # for every required privilege
-            #  check if it's in user privileges
-            #   decrement if yes
-            missing_privileges = []
+            # find servers with valid groups the user is a member of
+            valid_servers = []
+            for server in ldap_servers:
+                for group in valid_groups:
+                    raw_group_membership = call_jss(logger, 'ldapservers/id/' + str(server['id']) + '/group/' + urllib.quote(str(group[1])) + '/user/' + jamf_username.get())
 
-            for item in required_privileges:
-                if item in user_privileges:
-                    count_privileges -= 1
-                else:
-                   missing_privileges.append(item)
+                    if raw_group_membership['ldap_users']:
+                        valid_servers.append(server['name'])
 
             #
-            # if all require privileges accounted for, proceed
-            # else alert and fail
-            if count_privileges == 0:
-                logger.info("login: valid login. (%r)" % jamf_username.get())
+            # if we found a valid server, proceed to app
+            if valid_servers:
+                logger.info('valid server found, login successful.')
                 root.destroy() # clean up after yourself!
                 return
-            else:
-                logger.error("login: User %r lacks appropriate privileges: %r" % (jamf_username.get(), missing_privileges))
-                tkMessageBox.showerror("Jamf login", "User lacks appropriate privileges.")
 
-        except:
-            logger.error("login: Invalid username or password. (%r)" % jamf_username.get())
-            tkMessageBox.showerror("Jamf login", "Invalid username or password.")
-            sys.exit()
+            #
+            # check users account privileges for required rights
+            else:
+                raw_privileges = call_jss(logger, 'accounts/username/' + jamf_username.get())
+                user_privileges = raw_privileges['account']['privileges']['jss_objects']
+
+                #
+                # stop number of require privileges
+                count_privileges = len(required_privileges)
+
+                #
+                # for every required privilege
+                #  check if it's in user privileges
+                #   decrement if yes
+                # maintain list of missing require privileges
+                missing_privileges = []
+
+                for item in required_privileges:
+                    if item in user_privileges:
+                        count_privileges -= 1
+                    else:
+                        missing_privileges.append(item)
+
+                #
+                # if all require privileges accounted for, proceed
+                # else alert and fail
+                if count_privileges == 0:
+                    logger.info("login: valid login. (%r)" % jamf_username.get())
+                    root.destroy() # clean up after yourself!
+                    return
+                else:
+                    logger.error("login: User %r lacks appropriate privileges: %r" % (jamf_username.get(), missing_privileges))
+                    tkMessageBox.showerror("Jamf login", "User lacks appropriate privileges.\n%r" % missing_privileges)
+
+        #
+        # handle various communication errors
+        except urllib2.HTTPError, error:
+
+            logger.info("Code returned: %s" % error.code)
+
+            if error.code == 401:
+                logger.error("%s: Invalid username or password. (%r)" % (inspect.stack()[0][3], jamf_username.get()))
+                tkMessageBox.showerror("Jamf login", "Invalid username or password.")
+            else:
+                logger.error("%s: Error communicating with JSS. %s" % (inspect.stack()[0][3], jamf_hostname.get()))
+                tkMessageBox.showerror("Jamf login", "HTTP error from:\n%s" % jamf_hostname.get())
+        except urllib2.URLError:
+            logger.error("%s: Error contacting JSS: %s" % (inspect.stack()[0][3], jamf_hostname.get()))
+            tkMessageBox.showerror("Jamf login", "Unable to contact:\n%s" % jamf_hostname.get())
+        except Exception as exception_message:
+            logger.error("%s: Generic error. (%r)" % (inspect.stack()[0][3], exception_message))
+            tkMessageBox.showerror("Jamf login", "Generic error from %s." % jamf_hostname.get())
 
         sys.exit()
 
-    logger.info("%s: activated" % inspect.stack()[0][3])
-
     #
-    # This is really important. This list contains the required rights for this application.
-    required_privileges = ['Read Accounts', 'Read Computer Extension Attributes', 'Read Computers', 'Read OS X Configuration Profiles', 'Read Policies']
+    # This is really important. This list contains the required rights for the fields we need to access.
+    required_privileges = ['Read Accounts', 'Read Buildings', 'Read Computers', 'Update Computers', 'Read Departments', 'Read User', 'Update User']
 
     root = Tk()
     jamf_username = StringVar()
@@ -1213,7 +1368,7 @@ def login(logger):
     jamf_hostname = StringVar()
 
     # customizable for specific deployment
-    jamf_hostname.set("https://your.jss.server:8443")
+    jamf_hostname.set("https://your.jamf.server:8443")
 
     #
     # build and display login screen

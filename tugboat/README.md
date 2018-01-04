@@ -10,11 +10,11 @@ This version is highly modified from our internal version. Please see the follow
 
 2/16/17: Unfortunately it seems a lot of people are running into the LDAP bug I reference in the [blog post](https://apple.lib.utah.edu/?p=2057). If you are attempting to login as an LDAP user, Jamf does not map it's LDAP group permissions correctly. This is a known issue referred to as Product Issue PI-003395 inside Jamf. I urge you to contact your Jamf Technical Representative(s) and elevate this issue with them.
 
-**4/11/17: Released version 1.5.2 of Tugboat. Lots of tweaks, added logging with management_tools, much improved login, searching and top user detection.**
+4/11/17: Released version 1.5.2 of Tugboat. Lots of tweaks, added logging with management_tools, much improved login, searching and top user detection.
 
-**[Jamf's release notes](http://docs.jamf.com/9.98/casper-suite/release-notes/Bug_Fixes_and_Enhancements.html) for version 9.98 say that PI-003395 has been corrected. We're unable to test this and we're eager to hear from others if this is the case.**
+[Jamf's release notes](http://docs.jamf.com/9.98/casper-suite/release-notes/Bug_Fixes_and_Enhancements.html) for version 9.98 say that PI-003395 has been corrected. We're unable to test this and we're eager to hear from others if this is the case.
 
-
+**1/3/18: Released version 1.5.3 of Tugboat. Improved LDAP logins.**
 
 ## Contents
 
@@ -61,6 +61,7 @@ If you have any comments, questions, or other input, either [file an issue](../.
 
 - Python 2.7+ (which you can download [here](https://www.python.org/download/))
 - Pexpect 3.3+ (which you can download [here](https://github.com/pexpect/pexpect))
+- Management tools (which you can download [here](https://github.com/univ-of-utah-marriott-library-apple/management_tools/releases))
 
 If you intend to rebuild customized versions you will need the following tools, depending on your platform:
 
@@ -226,8 +227,9 @@ My heartfelt thanks to the other members of the Mac Group and the IT administrat
 
 ## Update History
 
-| Date      | Version | Notes                                    |
-| --------- | ------- | ---------------------------------------- |
-| 2017.4.11 | 1.5.2   | Logging with management_tools, login and search much improved, top user improved. Other tweaks. |
-| 2017.2.15 | 1.5.0   | Initial public release.                  |
+| Date       | Version | Notes                                    |
+| ---------- | ------- | ---------------------------------------- |
+| 2018.01.03 | 1.5.3   | Improved LDAP logins.                    |
+| 2017.04.11 | 1.5.2   | Logging with management_tools, login and search much improved, top user improved. Other tweaks. |
+| 2017.02.15 | 1.5.0   | Initial public release.                  |
 
