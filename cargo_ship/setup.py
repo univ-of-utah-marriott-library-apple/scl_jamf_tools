@@ -8,19 +8,19 @@ Usage:
 
 from setuptools import setup
 
-APP = ['tugboat.py']
-APP_NAME = "Tugboat"
+APP = ['cargo_ship.py']
+APP_NAME = "Cargo Ship"
 DATA_FILES = []
 OPTIONS = {'argv_emulation': True,
-    'iconfile': 'tugboat_icon.icns',
+    'iconfile': 'cargo_ship.icns',
     'plist': {
         'CFBundleName': APP_NAME,
         'CFBundleDisplayName': APP_NAME,
         'CFBundleGetInfoString': "Put your stuff into JAMF",
-        'CFBundleIdentifier': "edu.utah.scl.tugboat",
-        'CFBundleVersion': "1.5.2",
-        'CFBundleShortVersionString': "1.5.2",
-        'NSHumanReadableCopyright': u"Copyright © 2017, University of Utah, All Rights Reserved"
+        'CFBundleIdentifier': "edu.utah.scl.cargoship",
+        'CFBundleVersion': "1.0.4",
+        'CFBundleShortVersionString': "1.0.4",
+        'NSHumanReadableCopyright': u"Copyright © 2018, University of Utah, All Rights Reserved"
     }
 
 }

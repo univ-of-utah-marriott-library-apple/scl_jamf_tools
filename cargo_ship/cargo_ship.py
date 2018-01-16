@@ -1,6 +1,8 @@
 #!/usr/bin/python
-
-# Copyright (c) 2017 University of Utah Student Computing Labs. ################
+"""
+A Python Tk application to view Jamf computer records.
+"""
+# Copyright (c) 2018 University of Utah Student Computing Labs. ################
 # All Rights Reserved.
 #
 # Permission to use, copy, modify, and distribute this software and
@@ -32,6 +34,9 @@
 #    1.0.3  2018.1.xx       Added LDAP login logic. tjm
 #                           Added multiprocess policy parsing
 #
+#    1.0.4  2018.01.15      UI fixes. Host preference file. tjm
+#                           Light code cleanup
+#
 ################################################################################
 
 # notes: #######################################################################
@@ -39,33 +44,41 @@
 #     py2app:
 #     rm -rdf build dist ; /usr/bin/python setup.py py2app -s
 #
+#     pyinstaller:
+#     pyinstaller --onefile -i cargo_ship.ico cargo_ship.py
 #
+################################################################################
+
+# TTD: #########################################################################
 #
+#     Unify all jss calls in single generic method, something like:
+#           ('call_jss(logger, api_call)')
 #
 ################################################################################
 
 from __future__ import print_function
-from Tkinter import *
-import tkFont
-import ttk
-import tkMessageBox
-import subprocess
+import base64
+import ConfigParser
+import inspect
+import json
+import locale
 import os
+import platform
+import pwd
 import re
+import ScrolledText
+import subprocess
+import sys
+import time
+import tkFont
+import tkMessageBox
+import ttk
 import urllib
 import urllib2
-import json
-import base64
-import locale
-import sys
-import platform
-import webbrowser
 import multiprocess
-import time
-import inspect
-import ScrolledText
-from xml.dom.minidom import parseString
 from management_tools import loggers
+from Tkinter import *
+
 
 class Summarize(object):
     """
@@ -282,7 +295,7 @@ class Summarize(object):
         MjEwLy4tLCsqKSgnJiUkIyIhIB8eHRwbGhkYFxYVFBMSERAPDg0MCwoJCAcGBQQDAgEAADs=
         '''
 
-        self.root.title("Cargo Ship v1.0.3")
+        self.root.title("Cargo Ship v1.0.4")
 
         self.mainframe = ttk.Frame(self.root)
         self.mainframe.grid(column=0, row=0, sticky=NSEW)
@@ -496,7 +509,6 @@ class Summarize(object):
             self.status_string.set("%i matches returned." % len(response_json['computers']))
             self.logger.info("%s: %r" % (inspect.stack()[0][3], self.status_string.get()))
 
-
             search_font = tkFont.Font(font='TkDefaultFont')
             match_results = []
             max_length = 0
@@ -532,7 +544,7 @@ class Summarize(object):
                     name_trim = str(name_trim) + "a"
 
                 match_results.append([name_trim, match_name, match_id])
-                (string_width, string_height) = (search_font.measure(match_name +" (" + str(match_id) + ")"), search_font.metrics("linespace"))
+                (string_width, string_height) = (search_font.measure(match_name + " (" + str(match_id) + ")"), search_font.metrics("linespace"))
                 if max_length < string_width:
                     max_length = string_width
 
@@ -573,7 +585,7 @@ class Summarize(object):
                 list_frame.pack()
 
                 for item in sorted(match_results):
-                    insert_string = item[1] +" (" + str(item[2]) + ")"
+                    insert_string = item[1] + " (" + str(item[2]) + ")"
                     listbox.insert(END, insert_string)
 
                 listbox.bind("<<ListboxSelect>>", double_click)
@@ -668,16 +680,10 @@ class Summarize(object):
         #  add these values as a list to previously processed policies
         # this will not proceed quickly.
 
-
         #
         # There have to be better ways to handle this...
         #
         # Split off account info, to limit the number of parameters going into the mapped funtion
-        global local_jamf_hostname
-        global local_jamf_password
-        global local_jamf_username
-        global local_logger
-
         local_jamf_hostname = self.jamf_hostname
         local_jamf_password = self.jamf_password
         local_jamf_username = self.jamf_username
@@ -693,7 +699,7 @@ class Summarize(object):
             #
             # communicate with Jamf server
             try:
-                url = local_jamf_hostname + '/JSSResource/policies/id/'+ this_policy +'/subset/general&scope'
+                url = local_jamf_hostname + '/JSSResource/policies/id/' + this_policy + '/subset/general&scope'
                 request = urllib2.Request(url)
                 request.add_header('Accept', 'application/json')
                 request.add_header('Authorization', 'Basic ' + base64.b64encode(local_jamf_username + ':' + local_jamf_password))
@@ -801,7 +807,6 @@ class Summarize(object):
         elapsed_time = time.time() - start_time
         self.logger.info("%s: Elapsed time spent fetching and parsing policies: %r" % (inspect.stack()[0][3], elapsed_time))
 
-
         #
         # postponed processing from mapped function
         # hoping for additional performance increases
@@ -820,7 +825,6 @@ class Summarize(object):
                 tmp_scopecomputers.append(subpolicy['id'])
 
             final_policies.append([tmp_name, tmp_id, tmp_allcomputers, tmp_scopecomputers, tmp_scopecomputergroups])
-
 
         self.logger.info("%s: complete" % inspect.stack()[0][3])
         return final_policies
@@ -1048,8 +1052,6 @@ class Summarize(object):
             self.inventory_display.config(font=('', 12, 'normal italic'))
             self.inventory_string.set('No value')
 
-
-
         #
         # parse and display printers
         raw_printers = response_json['computer']['hardware']['mapped_printers']
@@ -1111,7 +1113,6 @@ class Summarize(object):
             self.ea_field.insert('1.0', item[1], ('BOLD'))
         self.ea_field.delete(END+'-2c', END)
 
-
         #
         # parse and display profiles
         # configuration_profiles section only includes ID's, no useable names
@@ -1161,12 +1162,9 @@ class Summarize(object):
         for item in valid_policies:
             fmt_policies.append([item.lower(), item])
 
-
         for item in sorted(fmt_policies, reverse=True):
             self.jamf_policies_field.insert('1.0', item[1] + "\n")
         self.jamf_policies_field.delete(END+'-2c', END)
-
-
 
     def reset_display(self):
         """
@@ -1185,10 +1183,122 @@ class Summarize(object):
         self.jamf_profiles_field.delete('0.0', END)
         self.jamf_policies_field.delete('0.0', END)
 
+
 def login(logger):
     """
     if the user has proper privleges, consider them an authorized user and proceed
     """
+    def read_create_prefs(logger):
+        """
+        Read specified config file or create default data structure
+        """
+        logger.info("%s: activated" % inspect.stack()[0][3])
+        config_path = ''
+
+        executable_name = os.path.basename(sys.argv[0])
+
+        if executable_name.count('.') > 1:
+            filename = executable_name.split('.')[:-1]
+            filename = '.'.join(filename)
+        else:
+            filename = executable_name.split('.')[0]
+
+        try:
+            if '_' in filename:
+                split_filename = filename.split('_')
+                try:
+                    int(split_filename[-1][0])
+                    del split_filename[-1]
+                except Exception as exception_message:
+                    print(exception_message)
+                config_name = 'edu.scl.utah.' + '_'.join(split_filename) + '.ini'
+            else:
+                config_name = 'edu.scl.utah.' + filename + '.ini'
+
+        except Exception as exception_message:
+            logger.error("Error creating config_name [%s]. %s" % (executable_name, exception_message))
+            return '', ''
+
+        if platform.system() == 'Darwin':
+            if os.path.exists(pwd.getpwuid(os.getuid())[5] + os.path.join('/', 'Library', 'Preferences', config_name)):
+                config_path = pwd.getpwuid(os.getuid())[5] + os.path.join('/', 'Library', 'Preferences', config_name)
+            elif os.path.exists(os.path.join('/', 'Library', 'Preferences', config_name)):
+                config_path = os.path.join('/', 'Library', 'Preferences', config_name)
+            else:
+                config_path = pwd.getpwuid(os.getuid())[5] + os.path.join('/', 'Library', 'Preferences', config_name)
+
+        elif platform.system() == 'Windows':
+            config_path = os.path.join(os.environ['APPDATA'], config_name)
+
+        if not os.path.exists(config_path):
+            logger.warn("Configuration file not found, creating structure in memory.")
+            config_file = ConfigParser.SafeConfigParser(allow_no_value=True)
+            config_file.add_section('login')
+            config_file.set('login', 'hosts', 'https://new_server:8443')
+            config_file.set('login', 'username', '')
+
+        else:
+            config_file = ConfigParser.SafeConfigParser(allow_no_value=True)
+            try:
+                config_file.read(config_path)
+            except Exception as exception_message:
+                logger.error("Error reading pre-exiting configuration file [%s]. %s" % (config_path, exception_message))
+                config_file = ConfigParser.SafeConfigParser(allow_no_value=True)
+                config_file.add_section('login')
+                config_file.set('login', 'hosts', 'https://new_server:8443')
+                config_file.set('login', 'username', '')
+
+        logger.info("Configuration path: %s" % config_path)
+        return config_file, config_path
+
+    def injest_prefs(logger, configfile):
+        """
+        Create data structures from config file
+        """
+        logger.info("%s: activated" % inspect.stack()[0][3])
+        config_options = {}
+        config_options["login"] = {}
+
+        for section in ["login"]:
+            for item in configfile.options(section):
+                if "use_" in item:
+                    try:
+                        config_options[section][item] = configfile.getboolean(section, item)
+                    except:
+                        config_options[section][item] = False
+                elif "path" in item:
+                    config_options[section][item] = configfile.get(section, item)
+                else:
+                    config_options[section][item] = configfile.get(section, item)
+
+        logger.info("Configuration file variables:")
+        for key, value in config_options.items():
+            logger.info(key)
+            for sub_key, sub_value in value.items():
+                logger.info("\t%s %r" % (sub_key, sub_value))
+
+        return config_options["login"]["hosts"]
+
+    def modify_prefs(logger, config_file, config_path, hostnames, valid_host):
+        """
+        Convert data structures back into config file and write out changes.
+        """
+        logger.info("%s: activated" % inspect.stack()[0][3])
+
+        hostnames.remove("https://new_server:8443")
+
+        if valid_host not in hostnames:
+            logger.info("%s not in configuration file, adding." % valid_host)
+            hostnames.append(valid_host)
+            config_file.set('login', 'hosts', ",".join(hostnames))
+
+            try:
+                with open(config_path, "wb") as config_write:
+                    config_file.write(config_write)
+                    logger.info("Wrote configuration file at %s." % config_path)
+            except Exception as exception_message:
+                logger.error("Error writing configuration file [%s]. %s" % (config_path, exception_message))
+
     def try_login():
         """
         jamf api call for login test
@@ -1217,7 +1327,7 @@ def login(logger):
                 if response.code != 200:
                     logger.error("login: Invalid response from Jamf (" + api_call + ")")
                     tkMessageBox.showerror("Jamf login", "Invalid response from Jamf")
-                    root.destroy() # clean up after yourself!
+                    root.destroy()  # clean up after yourself!
                     sys.exit()
 
                 response_json = json.loads(response.read())
@@ -1300,7 +1410,7 @@ def login(logger):
             # if we found a valid server, proceed to app
             if valid_servers:
                 logger.info('valid server found, login successful.')
-                root.destroy() # clean up after yourself!
+                root.destroy()  # clean up after yourself!
                 return
 
             #
@@ -1331,7 +1441,7 @@ def login(logger):
                 # else alert and fail
                 if count_privileges == 0:
                     logger.info("login: valid login. (%r)" % jamf_username.get())
-                    root.destroy() # clean up after yourself!
+                    root.destroy()  # clean up after yourself!
                     return
                 else:
                     logger.error("login: User %r lacks appropriate privileges: %r" % (jamf_username.get(), missing_privileges))
@@ -1362,13 +1472,17 @@ def login(logger):
     # This is really important. This list contains the required rights for the fields we need to access.
     required_privileges = ['Read Accounts', 'Read Buildings', 'Read Computers', 'Update Computers', 'Read Departments', 'Read User', 'Update User']
 
+    # read or create prefs
+    preference_file, preference_path = read_create_prefs(logger)
+    hostnames = injest_prefs(logger, preference_file).split(',')
+
+    if 'new_server' not in hostnames[0]:
+        hostnames.append("https://new_server:8443")
+
     root = Tk()
     jamf_username = StringVar()
     jamf_password = StringVar()
     jamf_hostname = StringVar()
-
-    # customizable for specific deployment
-    jamf_hostname.set("https://your.jamf.server:8443")
 
     #
     # build and display login screen
@@ -1380,8 +1494,10 @@ def login(logger):
     root.geometry('+0+0')
 
     ttk.Label(mainframe, text="Jamf Server:").grid(column=1, row=10, sticky=E)
-    uname_entry = ttk.Entry(mainframe, width=30, textvariable=jamf_hostname)
-    uname_entry.grid(column=2, row=10, sticky=EW)
+    hostname_combobox = ttk.Combobox(mainframe, width=30, textvariable=jamf_hostname)
+    hostname_combobox['values'] = hostnames
+    hostname_combobox.current(0)
+    hostname_combobox.grid(column=2, row=10, sticky=EW)
 
     ttk.Label(mainframe, text="Username:").grid(column=1, row=20, sticky=E)
     uname_entry = ttk.Entry(mainframe, width=30, textvariable=jamf_username)
@@ -1404,14 +1520,24 @@ def login(logger):
     uname_entry.focus()
     root.mainloop()
 
+    if preference_path:
+        modify_prefs(logger, preference_file, preference_path, hostnames, jamf_hostname.get())
+    else:
+        logger.error("No path to preferences, no save attempt.")
+
     return (jamf_hostname.get(), jamf_username.get(), jamf_password.get())
 
+
 def main():
+
+    global local_jamf_hostname
+    global local_jamf_password
+    global local_jamf_username
+    global local_logger
 
     logger = loggers.file_logger(name='cargoship')
     logger.info("Running Cargo Ship")
     logger.info("Level: Method/function: Message")
-
 
     jamf_hostname, jamf_username, jamf_password = login(logger)
     if not jamf_username:
@@ -1420,6 +1546,7 @@ def main():
     main_window = Tk()
     my_app = Summarize(main_window, logger, jamf_hostname, jamf_username, jamf_password)
     main_window.mainloop()
+
 
 if __name__ == '__main__':
     main()
