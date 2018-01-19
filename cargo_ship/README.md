@@ -16,7 +16,7 @@ I've been getting some feedback from users in environments with 150+ policies th
 
 [Jamf's release notes](http://docs.jamf.com/9.98/casper-suite/release-notes/Bug_Fixes_and_Enhancements.html) for version 9.98 say that PI-003395 has been corrected. We're unable to test this and we're eager to hear from others if this is the case.
 
-1/3/18: Released version 1.0.3 of Cargo Ship. Improved LDAP logins, added multiprocessing to particularly resource-hungry area of code.
+1/3/18: Released version 1.0.3 of Cargo Ship. Improved LDAP logins, added multiprocessing to particularly resource-hungry area of code. Please be sure to enable LDAP Server 'READ' access.
 
 **1/15/18: Released version 1.0.4 of Cargo Ship. UI fixes, host preference file and light code cleanup**.
 
@@ -133,6 +133,7 @@ This chart shows the required privileges for Cargo Ship to operate properly:
 | Accounts and Groups           |        |  ☑   |        |        | Needed for login functionality |
 | Computer Extension Attributes |        |  ☑   |        |        |                                |
 | Computers                     |        |  ☑   |        |        |                                |
+| LDAP Servers                  |        |  ☑   |        |        | Needed for login functionality |
 | OS X Configuration Profiles   |        |  ☑   |        |        |                                |
 | Policies                      |        |  ☑   |        |        |                                |
 

@@ -14,7 +14,7 @@ This version is highly modified from our internal version. Please see the follow
 
 [Jamf's release notes](http://docs.jamf.com/9.98/casper-suite/release-notes/Bug_Fixes_and_Enhancements.html) for version 9.98 say that PI-003395 has been corrected. We're unable to test this and we're eager to hear from others if this is the case.
 
-1/3/18: Released version 1.5.3 of Tugboat. Improved LDAP logins.
+1/3/18: Released version 1.5.3 of Tugboat. Improved LDAP logins. Please be sure to enable LDAP Server 'READ' access.
 
 **1/15/18: Released version 1.5.4 of Tugboat. Host preference file and light code cleanup.**
 
@@ -195,6 +195,7 @@ This chart shows the required privileges for Cargo Ship to operate properly:
 | Buildings           |        |  ☑   |        |        |                                |
 | Computers           |        |  ☑   |   ☑    |        |                                |
 | Departments         |        |  ☑   |        |        |                                |
+| LDAP Servers        |        |  ☑   |        |        | Needed for login functionality |
 | Users               |        |  ☑   |   ☑    |        |                                |
 
 These requirements are also included in the login method. If you make customizations, you may need to add these additional areas to the list of required privileges.
