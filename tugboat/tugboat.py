@@ -1629,9 +1629,6 @@ def login(logger):
             #
             # handle various communication errors
             except urllib2.HTTPError, error:
-
-                logger.error("Code returned: %s %s" % (response.code, api_call))
-
                 if error.code == 401:
                     logger.error("%s: Invalid username or password. (%r) (%s)" % (inspect.stack()[0][3], jamf_username.get(), api_call))
                     tkMessageBox.showerror("Jamf login", "Invalid username or password.")
