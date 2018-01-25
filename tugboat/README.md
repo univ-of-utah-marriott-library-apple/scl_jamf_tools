@@ -16,7 +16,9 @@ This version is highly modified from our internal version. Please see the follow
 
 1/3/18: Released version 1.5.3 of Tugboat. Improved LDAP logins. Please be sure to enable LDAP Server 'READ' access.
 
-**1/15/18: Released version 1.5.4 of Tugboat. Host preference file and light code cleanup.**
+1/15/18: Released version 1.5.4 of Tugboat. Host preference file and light code cleanup.
+
+**1/25/18: Released version 1.7 of Tugboat. Added logic to handle users with full editing privileges and read-only users. Additional logging added to support user levels and diagnose privilege issues. Included Windows executable again. The login functions in Tugboat and Cargo Ship are diverging, since Cargo Ship was always read-only by nature.**
 
 ## Contents
 
@@ -189,14 +191,14 @@ In order to use Jamf's API, your users will need the appropriate rights to certa
 
 This chart shows the required privileges for Cargo Ship to operate properly:
 
-| Field               | Create | Read | Update | Delete | Notes                          |
-| ------------------- | :----: | :--: | :----: | :----: | :----------------------------- |
-| Accounts and Groups |        |  ☑   |        |        | Needed for login functionality |
-| Buildings           |        |  ☑   |        |        |                                |
-| Computers           |        |  ☑   |   ☑    |        |                                |
-| Departments         |        |  ☑   |        |        |                                |
-| LDAP Servers        |        |  ☑   |        |        | Needed for login functionality |
-| Users               |        |  ☑   |   ☑    |        |                                |
+| Field               | Create | Read | Update | Delete | Notes                                    |
+| ------------------- | :----: | :--: | :----: | :----: | :--------------------------------------- |
+| Accounts and Groups |        |  ☑   |        |        | Needed for login functionality           |
+| Buildings           |        |  ☑   |        |        |                                          |
+| Computers           |        |  ☑   |   ☑    |        | Without update right, user is considered read-only. |
+| Departments         |        |  ☑   |        |        |                                          |
+| LDAP Servers        |        |  ☑   |        |        | Needed for login functionality           |
+| Users               |        |  ☑   |   ☑    |        | Without update right, user is considered read-only. |
 
 These requirements are also included in the login method. If you make customizations, you may need to add these additional areas to the list of required privileges.
 
@@ -232,6 +234,7 @@ My heartfelt thanks to the other members of the Mac Group and the IT administrat
 
 | Date       | Version | Notes                                    |
 | ---------- | ------- | ---------------------------------------- |
+| 2018.01.25 | 1.7.0   | Added full/read-only user support. Additional logging. |
 | 2018.01.15 | 1.5.4   | Host preference file. Light code cleanup. |
 | 2018.01.03 | 1.5.3   | Improved LDAP logins.                    |
 | 2017.04.11 | 1.5.2   | Logging with management_tools, login and search much improved, top user improved. Other tweaks. |

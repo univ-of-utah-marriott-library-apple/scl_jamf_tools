@@ -28,19 +28,23 @@ A Python Tk application to edit Jamf computer records.
 #    1.5.2  2017.02.15      Logging with management_tools, login and search
 #                           much improved, top user improved. Other tweaks. tjm
 #
-#    1.5.3  2018.1.xx       Added LDAP login logic. tjm
+#    1.5.3  2018.01.xx      Added LDAP login logic. tjm
 #
 #    1.5.4  2018.01.15      Host preference file. tjm
 #                           Light code cleanup
+#
+#    1.6.0  2018.01.25      Full/Auditing user login support. tjm
+#                           increased, fine-grained logging.
+#
 #
 ################################################################################
 
 # notes: #######################################################################
 #
-#     py2app:
+#     py2app (macOS):
 #     rm -rdf build dist ; /usr/bin/python setup.py py2app -s
 #
-#     pyinstaller:
+#     pyinstaller (Windows):
 #     pyinstaller --onefile -i tugboat_icon.ico tugboat.py
 #
 ################################################################################
@@ -49,6 +53,10 @@ A Python Tk application to edit Jamf computer records.
 #
 #     Unify all jss calls in single generic method, something like:
 #           ('call_jss(logger, api_call)')
+#
+#     Set fields to disabled when auditing.
+#
+#
 #
 ################################################################################
 
@@ -59,7 +67,6 @@ import inspect
 import json
 import os
 import platform
-import pwd
 import re
 import socket
 import subprocess
@@ -73,16 +80,22 @@ import urllib2
 import webbrowser
 import xml.etree.cElementTree as ET
 from Tkinter import *
-from management_tools import loggers
 if platform.system() == 'Darwin':
     import pexpect
+    import pwd
+    try:
+        from management_tools import loggers
+    except:
+        import logging
+else:
+    import logging
 
 
 class Computer(object):
     """
     Store GUI and data structures describing jamf computer records
     """
-    def __init__(self, root, logger, jamf_hostname, jamf_username, jamf_password):
+    def __init__(self, root, logger, jamf_hostname, jamf_username, jamf_password, access_level):
         """
         initialize variables and data structures
         """
@@ -122,7 +135,7 @@ class Computer(object):
         self.phone_string.set("")
         self.room_string.set("")
         self.assettag_string.set("")
-        self.status_string.set("Ready.")
+        self.status_string.set("Logged in to " + self.jamf_hostname + " with " + access_level + " privileges.")
         self.computer_name_string.set("")
 
         self.status_warning = ttk.Style()
@@ -359,7 +372,7 @@ class Computer(object):
         BAMCAQAAOw==
         '''
 
-        self.root.title("Tugboat 1.5.4")
+        self.root.title("Tugboat 1.7")
 
         self.mainframe = ttk.Frame(self.root)
 
@@ -476,8 +489,12 @@ class Computer(object):
         ttk.Button(self.mainframe, text="Reset", width=6, command=self.reset_data).grid(column=4, row=1100, sticky=W)
         ttk.Button(self.mainframe, text="Quit", width=6, command=self.root.destroy).grid(column=4, row=1100)
 
-        self.submit_btn = ttk.Button(self.mainframe, text="Modify", width=7, command=self.submit)
-        self.submit_btn.grid(column=4, row=1100, sticky=E)
+        if access_level == 'full':
+            self.submit_btn = ttk.Button(self.mainframe, text="Submit", default='active', command=self.submit)
+            self.submit_btn.grid(column=4, row=1100, sticky=E)
+        else:
+            self.submit_btn = ttk.Button(self.mainframe, text="Auditing", state='disabled')
+            self.submit_btn.grid(column=4, row=1100, sticky=E)
 
         #
         # this loop adds a small amount of space around each UI element, changing the value will significantly change the final size of the window
@@ -1619,7 +1636,7 @@ def login(logger):
                 if response.code != 200:
                     logger.error("login: Invalid response from Jamf (" + api_call + ")")
                     tkMessageBox.showerror("Jamf login", "Invalid response from Jamf")
-                    root.destroy()  # clean up after yourself!
+                    root.destroy() # clean up after yourself!
                     sys.exit()
 
                 response_json = json.loads(response.read())
@@ -1639,6 +1656,7 @@ def login(logger):
                 logger.error("%s: Error contacting JSS: %s %s" % (inspect.stack()[0][3], jamf_hostname.get(), api_call))
                 tkMessageBox.showerror("Jamf login", "Unable to contact:\n%s" % jamf_hostname.get())
             except Exception as exception_message:
+                # this could be so many different things... :(
                 logger.error("%s: Generic error. (%r) %s" % (inspect.stack()[0][3], exception_message, api_call))
                 tkMessageBox.showerror("Jamf login", "Generic error from %s." % jamf_hostname.get())
 
@@ -1649,13 +1667,11 @@ def login(logger):
 
         logger.info("%s: activated" % inspect.stack()[0][3])
 
+        valid_user_read = False
+        valid_user_full = False
+        global access_level
+
         try:
-            # Attempt to verify LDAP users.
-            #   1. Pull JSS acounts for users and groups
-            #   2. Pull LDAP servers
-            #   3. Build list of valid groups, those with appropriate rights
-            #   4. Check each LDAP server for valid groups the user is a member of, login if found
-            #   5. Fall back to jss user login, check account for appropriate rights
 
             jss_accounts = call_jss(logger, 'accounts')
 
@@ -1670,71 +1686,118 @@ def login(logger):
 
             #
             # find groups on jss that have required_privileges
-            valid_groups = []
+            valid_full_groups = []
+            valid_read_groups = []
+
             for item in group_list:
+                missing_ldap_read_privileges = []
+                missing_ldap_update_privileges = []
+                valid_ldap_read = False
+                valid_ldap_update = False
+
                 raw_privs = call_jss(logger, 'accounts/groupid/' + str(item['id']))
                 this_group_privs = raw_privs['group']['privileges']['jss_objects']
 
-                count_privileges = len(required_privileges)
+                for read_item in read_privileges:
+                    if read_item not in this_group_privs:
+                        missing_ldap_read_privileges.append(read_item)
+                if not missing_ldap_read_privileges:
+                    valid_ldap_read = True
 
-                for this_privilege in required_privileges:
-                    if this_privilege in this_group_privs:
-                        count_privileges -= 1
+                for update_item in update_privileges:
+                    if update_item not in this_group_privs:
+                        missing_ldap_update_privileges.append(update_item)
+                if not missing_ldap_update_privileges:
+                    valid_ldap_update = True
 
-                if count_privileges == 0:
-                    logger.info("%s is valid." % item['name'])
-                    valid_groups.append([item['id'], item['name']])
+                if valid_ldap_read and valid_ldap_update:
+                    logger.info("%s is read and update valid." % item['name'])
+                    valid_full_groups.append([item['id'], item['name']])
+
+                elif valid_ldap_read:
+                    logger.info("%s is read valid." % item['name'])
+                    valid_read_groups.append([item['id'], item['name']])
+                    logger.warn("login: Group %r lacks appropriate update privileges: %r" % (item['name'], (missing_ldap_read_privileges + missing_ldap_update_privileges)))
+
+                else:
+                    logger.error("login: Group %r lacks appropriate privileges: %r" % (item['name'], missing_ldap_read_privileges + missing_ldap_update_privileges))
 
             #
             # find servers with valid groups the user is a member of
-            valid_servers = []
+            valid_full_servers = []
+            valid_read_servers = []
+
             for server in ldap_servers:
-                for group in valid_groups:
+                for group in valid_full_groups:
                     raw_group_membership = call_jss(logger, 'ldapservers/id/' + str(server['id']) + '/group/' + urllib.quote(str(group[1])) + '/user/' + jamf_username.get())
 
                     if raw_group_membership['ldap_users']:
-                        valid_servers.append(server['name'])
+                        logger.info("login: %s is a member of full group %s on server %s" % (jamf_username.get(), group[1], server['name']))
+                        valid_full_servers.append(server['name'])
+
+                for group in valid_read_groups:
+                    raw_group_membership = call_jss(logger, 'ldapservers/id/' + str(server['id']) + '/group/' + urllib.quote(str(group[1])) + '/user/' + jamf_username.get())
+
+                    if raw_group_membership['ldap_users']:
+                        logger.info("login: %s is a member of read group %s on server %s" % (jamf_username.get(), group[1], server['name']))
+                        valid_read_servers.append(server['name'])
 
             #
-            # if we found a valid server, proceed to app
-            if valid_servers:
-                logger.info('valid server found, login successful.')
-                root.destroy()  # clean up after yourself!
-                return
-
-            #
-            # check users account privileges for required rights
-            else:
+            # Check user's privileges
+            user_update = False
+            user_read = False
+            missing_read_privileges = []
+            missing_update_privileges = []
+            try:
                 raw_privileges = call_jss(logger, 'accounts/username/' + jamf_username.get())
                 user_privileges = raw_privileges['account']['privileges']['jss_objects']
 
-                #
-                # stop number of require privileges
-                count_privileges = len(required_privileges)
+                for item in read_privileges:
+                    if item not in user_privileges:
+                        missing_read_privileges.append(item)
 
-                #
-                # for every required privilege
-                #  check if it's in user privileges
-                #   decrement if yes
-                # maintain list of missing require privileges
-                missing_privileges = []
+                if not missing_read_privileges:
+                    user_read = True
 
-                for item in required_privileges:
-                    if item in user_privileges:
-                        count_privileges -= 1
-                    else:
-                        missing_privileges.append(item)
+                for item in update_privileges:
+                    if item not in user_privileges:
+                        missing_update_privileges.append(item)
 
-                #
-                # if all require privileges accounted for, proceed
-                # else alert and fail
-                if count_privileges == 0:
-                    logger.info("login: valid login. (%r)" % jamf_username.get())
-                    root.destroy()  # clean up after yourself!
-                    return
-                else:
-                    logger.error("login: User %r lacks appropriate privileges: %r" % (jamf_username.get(), missing_privileges))
-                    tkMessageBox.showerror("Jamf login", "User lacks appropriate privileges.\n%r" % missing_privileges)
+                if not missing_update_privileges:
+                    user_update = True
+
+                if missing_read_privileges or missing_update_privileges:
+                    logger.warn("login: %s is missing privileges for full access: %r" % (jamf_username.get(), missing_read_privileges + missing_update_privileges))
+
+            except Exception as exception_message:
+                logger.info("%s: Error checking user account info. (%r)" % (inspect.stack()[0][3], exception_message))
+
+            #
+            # if all require privileges accounted for, proceed
+            # else alert and fail
+            if user_read and user_update:
+                logger.info("login: valid full user login. (%r)" % jamf_username.get())
+                root.destroy()  # clean up after yourself!
+                access_level = 'full'
+                return
+            elif valid_full_servers:
+                logger.info("login: valid full LDAP login. (%r)" % jamf_username.get())
+                root.destroy()  # clean up after yourself!
+                access_level = 'full'
+                return
+            elif user_read:
+                logger.info("login: valid read user login. (%r)" % jamf_username.get())
+                root.destroy()  # clean up after yourself!
+                access_level = 'read-only'
+                return
+            elif valid_read_servers:
+                logger.info("login: valid read LDAP login. (%r)" % jamf_username.get())
+                root.destroy()  # clean up after yourself!
+                access_level = 'read-only'
+                return
+            else:
+                logger.error("login: User %r lacks appropriate privileges: %r" % (jamf_username.get(), missing_privileges))
+                tkMessageBox.showerror("Jamf login", "User lacks appropriate privileges.\n%r" % missing_privileges)
 
         #
         # handle various communication errors
@@ -1759,7 +1822,8 @@ def login(logger):
 
     #
     # This is really important. This list contains the required rights for the fields we need to access.
-    required_privileges = ['Read Accounts', 'Read Buildings', 'Read Computers', 'Update Computers', 'Read Departments', 'Read User', 'Update User']
+    read_privileges = ['Read Accounts', 'Read Buildings', 'Read Computers', 'Read Departments', 'Read User', 'Read LDAP Servers']
+    update_privileges = ['Update Computers', 'Update User']
 
     # read or create prefs
     preference_file, preference_path = read_create_prefs(logger)
@@ -1783,6 +1847,7 @@ def login(logger):
     root.geometry('+0+0')
 
     ttk.Label(mainframe, text="Jamf Server:").grid(column=1, row=10, sticky=E)
+
     hostname_combobox = ttk.Combobox(mainframe, width=30, textvariable=jamf_hostname)
     hostname_combobox['values'] = hostnames
     hostname_combobox.current(0)
@@ -1796,7 +1861,11 @@ def login(logger):
     pword_entry = ttk.Entry(mainframe, width=30, textvariable=jamf_password, show="*")
     pword_entry.grid(column=2, row=30, sticky=EW)
 
-    ttk.Button(mainframe, text="Quit", command=sys.exit).grid(column=2, row=70, padx=3)
+    if platform.system() == 'Darwin':
+        ttk.Button(mainframe, text="Quit", command=sys.exit).grid(column=2, row=70, padx=3)
+    else:
+        ttk.Button(mainframe, text="Quit", command=sys.exit).grid(column=2, row=70, padx=3, sticky=W)
+
     ttk.Button(mainframe, text="Login", default='active', command=try_login).grid(column=2, row=70, padx=3, sticky=E)
 
     if platform.system() == 'Darwin':
@@ -1814,24 +1883,25 @@ def login(logger):
     else:
         logger.error("No path to preferences, no save attempt.")
 
-    return (jamf_hostname.get(), jamf_username.get(), jamf_password.get())
+    return (jamf_hostname.get(), jamf_username.get(), jamf_password.get(), access_level)
 
 
 def main():
     """
     Cooridnates login and app launching
     """
+    access_level = ''
 
     logger = loggers.file_logger(name='tugboat')
     logger.info("Running Tugboat")
     logger.info("Level: Method/function: Message")
 
-    jamf_hostname, jamf_username, jamf_password = login(logger)
+    jamf_hostname, jamf_username, jamf_password, access_level = login(logger)
     if not jamf_username:
         sys.exit(0)
 
     root = Tk()
-    my_app = Computer(root, logger, jamf_hostname, jamf_username, jamf_password)
+    my_app = Computer(root, logger, jamf_hostname, jamf_username, jamf_password, access_level)
 
     root.mainloop()
 
