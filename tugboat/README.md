@@ -18,7 +18,9 @@ This version is highly modified from our internal version. Please see the follow
 
 1/15/18: Released version 1.5.4 of Tugboat. Host preference file and light code cleanup.
 
-**1/25/18: Released version 1.7 of Tugboat. Added logic to handle users with full editing privileges and read-only users. Additional logging added to support user levels and diagnose privilege issues. Included Windows executable again. The login functions in Tugboat and Cargo Ship are diverging, since Cargo Ship was always read-only by nature.**
+1/25/18: Released version 1.7 of Tugboat. Added logic to handle users with full editing privileges and read-only users. Additional logging added to support user levels and diagnose privilege issues. Included Windows executable again. The login functions in Tugboat and Cargo Ship are diverging, since Cargo Ship was always read-only by nature.
+
+**1/29/18: Released version 1.7.1 of Tugboat. In audit (read-only) mode, the UI now correctly indicates that the information from the database cannot be changed. Corrected a login bug.**
 
 ## Contents
 
@@ -208,9 +210,9 @@ The most obvious area for customization is utilizing an external source of infor
 
 ### ldap_object.py
 
-This is Python object that consumes an LDAP record for a user and makes the data available to the developer by asking specific questions of it. "Is this person a student?", "What is this persons email address?", etc. Integrating this object with your code will require familiarity with the schema used by your particular institution.
+This is a python object that consumes an LDAP record from [dscl](https://developer.apple.com/legacy/library/documentation/Darwin/Reference/ManPages/man1/dscl.1.html) for a user and makes the data available to the developer by asking specific questions of it. "Is this person a student?", "What is this persons email address?", etc. Integrating this object with your code will require familiarity with the schema used by your particular institution.
 
-The object as written requires underlying MacOS tools and does not rely on any additional Python modules. However, it may be helpful guiding you if you prefer to use another module for interacting with your particular LDAP.
+The object as written requires underlying MacOS tools and does not rely on any additional Python modules. However, it may be helpful guiding you if you prefer to use another module for interacting with your particular LDAP or directory server.
 
 ### database_funtion.py
 
@@ -234,6 +236,7 @@ My heartfelt thanks to the other members of the Mac Group and the IT administrat
 
 | Date       | Version | Notes                                    |
 | ---------- | ------- | ---------------------------------------- |
+| 2018.01.29 | 1.7.1   | Adjusted UI to reflect read-only nature of audit mode. Login bug corrected. |
 | 2018.01.25 | 1.7.0   | Added full/read-only user support. Additional logging. |
 | 2018.01.15 | 1.5.4   | Host preference file. Light code cleanup. |
 | 2018.01.03 | 1.5.3   | Improved LDAP logins.                    |

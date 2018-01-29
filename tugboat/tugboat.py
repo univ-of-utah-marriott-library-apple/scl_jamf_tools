@@ -33,9 +33,11 @@ A Python Tk application to edit Jamf computer records.
 #    1.5.4  2018.01.15      Host preference file. tjm
 #                           Light code cleanup
 #
-#    1.6.0  2018.01.25      Full/Auditing user login support. tjm
-#                           increased, fine-grained logging.
+#    1.7.0  2018.01.25      Full/Auditing user login support. tjm
+#                           Increased, fine-grained logging.
 #
+#    1.7.1  2018.01.28      UI limited in audit mode. tjm
+#                           Bug in login code corrected.
 #
 ################################################################################
 
@@ -54,8 +56,7 @@ A Python Tk application to edit Jamf computer records.
 #     Unify all jss calls in single generic method, something like:
 #           ('call_jss(logger, api_call)')
 #
-#     Set fields to disabled when auditing.
-#
+#     Add correct windows logging.
 #
 #
 ################################################################################
@@ -80,6 +81,9 @@ import urllib2
 import webbrowser
 import xml.etree.cElementTree as ET
 from Tkinter import *
+
+#
+# Need to implement correct windows-appropriate logging.
 if platform.system() == 'Darwin':
     import pexpect
     import pwd
@@ -88,7 +92,10 @@ if platform.system() == 'Darwin':
     except:
         import logging
 else:
-    import logging
+    try:
+        from management_tools import loggers
+    except:
+        import logging
 
 
 class Computer(object):
@@ -104,6 +111,7 @@ class Computer(object):
         self.jamf_hostname = jamf_hostname
         self.jamf_password = jamf_password
         self.jamf_username = jamf_username
+        self.access_level = access_level
         self.local_jamf_id = None
 
         self.hostname = ""
@@ -372,7 +380,7 @@ class Computer(object):
         BAMCAQAAOw==
         '''
 
-        self.root.title("Tugboat 1.7")
+        self.root.title("Tugboat 1.7.1")
 
         self.mainframe = ttk.Frame(self.root)
 
@@ -405,7 +413,10 @@ class Computer(object):
 
         if platform.system() == 'Darwin':
             ttk.Label(self.mainframe, text="User Selection:").grid(column=1, row=150, sticky=E)
-            ttk.Button(self.mainframe, text="Top User (Admin Req.)", command=self.usage).grid(column=2, row=150, sticky=W)
+            if self.access_level == 'full':
+                ttk.Button(self.mainframe, text="Top User (Admin Req.)", command=self.usage).grid(column=2, row=150, sticky=W)
+            else:
+                ttk.Button(self.mainframe, text="Top User (Admin Req.)", command=self.usage, state='disabled').grid(column=2, row=150, sticky=W)
 
         #
         # If you are considering adding UI elements to communicate with user database, place them here
@@ -495,6 +506,18 @@ class Computer(object):
         else:
             self.submit_btn = ttk.Button(self.mainframe, text="Auditing", state='disabled')
             self.submit_btn.grid(column=4, row=1100, sticky=E)
+
+            self.computername_entry.configure(state='disabled')
+            self.assettag_entry.configure(state='disabled')
+            self.barcode_entry.configure(state='disabled')
+            self.endusername_entry.configure(state='disabled')
+            self.fullname_entry.configure(state='disabled')
+            self.division_combobox.configure(state="disabled")
+            self.position_entry.configure(state='disabled')
+            self.email_entry.configure(state='disabled')
+            self.phone_entry.configure(state='disabled')
+            self.building_combobox.configure(state="disabled")
+            self.room_entry.configure(state='disabled')
 
         #
         # this loop adds a small amount of space around each UI element, changing the value will significantly change the final size of the window
@@ -1022,7 +1045,7 @@ class Computer(object):
 
         self.logger.info("%s: activated" % inspect.stack()[0][3])
 
-        if self.platform == "Mac":
+        if self.platform == "Mac" and self.access_level == 'full':
             self.jamf_management_btn.configure(state="normal")
 
         else:
@@ -1649,6 +1672,9 @@ def login(logger):
                 if error.code == 401:
                     logger.error("%s: Invalid username or password. (%r) (%s)" % (inspect.stack()[0][3], jamf_username.get(), api_call))
                     tkMessageBox.showerror("Jamf login", "Invalid username or password.")
+                elif error.code == 404:
+                    logger.warn("%s: JSS account not found. [%s]" % (inspect.stack()[0][3], jamf_username.get()))
+                    return None
                 else:
                     logger.error("%s: Error communicating with JSS. %s %s" % (inspect.stack()[0][3], jamf_hostname.get(), api_call))
                     tkMessageBox.showerror("Jamf login", "HTTP error from:\n%s" % jamf_hostname.get())
@@ -1750,27 +1776,29 @@ def login(logger):
             missing_update_privileges = []
             try:
                 raw_privileges = call_jss(logger, 'accounts/username/' + jamf_username.get())
-                user_privileges = raw_privileges['account']['privileges']['jss_objects']
 
-                for item in read_privileges:
-                    if item not in user_privileges:
-                        missing_read_privileges.append(item)
+                if raw_privileges:
+                    user_privileges = raw_privileges['account']['privileges']['jss_objects']
 
-                if not missing_read_privileges:
-                    user_read = True
+                    for item in read_privileges:
+                        if item not in user_privileges:
+                            missing_read_privileges.append(item)
 
-                for item in update_privileges:
-                    if item not in user_privileges:
-                        missing_update_privileges.append(item)
+                    if not missing_read_privileges:
+                        user_read = True
 
-                if not missing_update_privileges:
-                    user_update = True
+                    for item in update_privileges:
+                        if item not in user_privileges:
+                            missing_update_privileges.append(item)
 
-                if missing_read_privileges or missing_update_privileges:
-                    logger.warn("login: %s is missing privileges for full access: %r" % (jamf_username.get(), missing_read_privileges + missing_update_privileges))
+                    if not missing_update_privileges:
+                        user_update = True
+
+                    if missing_read_privileges or missing_update_privileges:
+                        logger.warn("login: %s is missing privileges for full access: %r" % (jamf_username.get(), missing_read_privileges + missing_update_privileges))
 
             except Exception as exception_message:
-                logger.info("%s: Error checking user account info. (%r)" % (inspect.stack()[0][3], exception_message))
+                logger.warn("%s: Error checking user account info. (%r)" % (inspect.stack()[0][3], exception_message))
 
             #
             # if all require privileges accounted for, proceed

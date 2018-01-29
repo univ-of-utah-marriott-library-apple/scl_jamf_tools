@@ -42,6 +42,7 @@ Tugboat is designed to make modifications to specific computer records on your J
 
 | Date       | Notes                                    |
 | ---------- | ---------------------------------------- |
+| 2018.01.29 | Updated Tugboat 1.7.1                    |
 | 2018.01.25 | Updated Tugboat 1.7                      |
 | 2018.01.15 | Updated Tugboat 1.5.4 and Cargo Ship 1.0.4 |
 | 2018.01.03 | Updated Tugboat 1.5.3 and Cargo Ship 1.0.3 |
