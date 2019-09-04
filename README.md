@@ -1,6 +1,6 @@
 # SCL Jamf Tools
 
-This repository contains a collection of tools written to perform as enhancements to the Jamf Pro management software. You can read about them at our [blog post](https://apple.lib.utah.edu/introducing-scl-jamf-tools/) or in the indiviual project areas.
+This repository contains a collection of tools written to perform as enhancements to the Jamf Pro management software. You can read about them at my [blog post](https://apple.lib.utah.edu/introducing-scl-jamf-tools/) or in the individual project areas.
 
 Our goal is to make genericized versions of our internal tools available to other Jamf administrators. They are usable as is, but are intended as frameworks that others can use to build custom tools to more closely fit their environments.
 
